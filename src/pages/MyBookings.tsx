@@ -15,6 +15,7 @@ interface BookedEvent {
   status: string;
   booked_count: number;
   capacity: number;
+  max_tickets_per_user: number;
 }
 
 interface Reservation {
@@ -72,7 +73,7 @@ function EditModal({
   // capacity minus that = what's available to this user
   const spotsAvailableForUser =
     event.capacity - event.booked_count + reservation.tickets_requested;
-  const maxSeats = Math.min(5, Math.max(1, spotsAvailableForUser));
+  const maxSeats = Math.min(event.max_tickets_per_user, Math.max(1, spotsAvailableForUser));
 
   const [seats, setSeats] = useState(reservation.tickets_requested);
 
@@ -292,7 +293,8 @@ export default function MyBookings() {
           category,
           status,
           booked_count,
-          capacity
+          capacity,
+          max_tickets_per_user
         )
       `)
       .eq('status', 'confirmed')

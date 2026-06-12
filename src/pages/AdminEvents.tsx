@@ -516,6 +516,14 @@ function EventModal({
       };
 
       if (isEditing) {
+        // Remove the old banner from storage if it's being replaced or cleared
+        if (editEvent.image_url && (form.image || !form.existingImageUrl)) {
+          const oldFileName = editEvent.image_url.split('/').pop()?.split('?')[0];
+          if (oldFileName) {
+            await supabase.storage.from('event-banners').remove([oldFileName]);
+          }
+        }
+
         const { error } = await supabase
           .from('events')
           .update(payload)
@@ -753,6 +761,16 @@ export default function AdminEvents() {
 
   async function handleDeleteEvent(id: string) {
     setDeletingId(id);
+
+    // Remove the banner from storage before deleting the DB row
+    const eventToDelete = events.find((e) => e.id === id);
+    if (eventToDelete?.image_url) {
+      const fileName = eventToDelete.image_url.split('/').pop()?.split('?')[0];
+      if (fileName) {
+        await supabase.storage.from('event-banners').remove([fileName]);
+      }
+    }
+
     const { error } = await supabase.from('events').delete().eq('id', id);
 
     if (error) {

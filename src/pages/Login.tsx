@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 type Mode = 'login' | 'signup';
@@ -13,6 +14,7 @@ const inputClass =
 
 export default function Login() {
   const navigate = useNavigate();
+  const { session, profile } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,6 +22,13 @@ export default function Login() {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Redirect already-authenticated approved users away from the login page
+  useEffect(() => {
+    if (session && profile && profile.approval_status === 'approved') {
+      navigate(profile.role === 'admin' ? '/admin' : '/', { replace: true });
+    }
+  }, [session, profile, navigate]);
 
   function switchMode(next: Mode) {
     setMode(next);
