@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, ChevronRight, ImageIcon, Plus, Search, Tag, Trash2, X } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronRight,
+  ImageIcon,
+  Pencil,
+  Plus,
+  Search,
+  Tag,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
@@ -16,6 +26,7 @@ interface EventRecord {
   image_url: string | null;
   event_date: string;
   capacity: number;
+  max_tickets_per_user: number;
   category: string | null;
   status: EventStatus;
   created_at: string;
@@ -28,6 +39,8 @@ interface FormState {
   capacity: string;
   category: string;
   image: File | null;
+  existingImageUrl: string | null;
+  maxTickets: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -37,6 +50,8 @@ const EMPTY_FORM: FormState = {
   capacity: '',
   category: '',
   image: null,
+  existingImageUrl: null,
+  maxTickets: '5',
 };
 
 // ── Shared style constants ───────────────────────────────────────────────────
@@ -58,6 +73,12 @@ function formatDate(iso: string) {
   }).format(new Date(iso));
 }
 
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // ── Skeleton loaders ─────────────────────────────────────────────────────────
 
 function TableSkeletonRow() {
@@ -69,7 +90,7 @@ function TableSkeletonRow() {
       <td className="p-3"><div className="h-4 w-28 rounded bg-muted" /></td>
       <td className="p-3"><div className="h-4 w-12 rounded bg-muted" /></td>
       <td className="p-3"><div className="h-7 w-28 rounded-lg bg-muted" /></td>
-      <td className="p-3"><div className="h-4 w-14 rounded bg-muted" /></td>
+      <td className="p-3"><div className="h-4 w-24 rounded bg-muted" /></td>
       <td className="p-3"><div className="h-4 w-4 rounded bg-muted" /></td>
     </tr>
   );
@@ -140,6 +161,7 @@ function EventTableRow({
   onStatusChange,
   onNavigate,
   onDelete,
+  onEdit,
 }: {
   event: EventRecord;
   updating: boolean;
@@ -147,6 +169,7 @@ function EventTableRow({
   onStatusChange: (id: string, status: EventStatus) => void;
   onNavigate: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (event: EventRecord) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const canDelete = event.status !== 'active';
@@ -209,36 +232,49 @@ function EventTableRow({
         />
       </td>
 
-      {/* Delete — only for cancelled / completed; two-step confirm */}
+      {/* Edit + Delete — stopPropagation prevents row navigation */}
       <td className="p-3" onClick={(e) => e.stopPropagation()}>
-        {canDelete && (
-          confirmDelete ? (
-            <div className="flex items-center gap-1.5 whitespace-nowrap">
-              <button
-                onClick={() => { onDelete(event.id); setConfirmDelete(false); }}
-                disabled={deleting}
-                className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
-              >
-                {deleting ? '…' : 'Confirm'}
-              </button>
-              <span className="text-muted-foreground/40">·</span>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-destructive"
-            >
-              <Trash2 className="h-3 w-3" />
-              Delete
-            </button>
-          )
-        )}
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <button
+            onClick={() => onEdit(event)}
+            className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-foreground"
+          >
+            <Pencil className="h-3 w-3" />
+            Edit
+          </button>
+
+          {canDelete && (
+            <>
+              <span className="text-muted-foreground/30">·</span>
+              {confirmDelete ? (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => { onDelete(event.id); setConfirmDelete(false); }}
+                    disabled={deleting}
+                    className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+                  >
+                    {deleting ? '…' : 'Confirm'}
+                  </button>
+                  <span className="text-muted-foreground/40">·</span>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </td>
 
       {/* Chevron indicator */}
@@ -258,6 +294,7 @@ function EventCard({
   onStatusChange,
   onNavigate,
   onDelete,
+  onEdit,
 }: {
   event: EventRecord;
   updating: boolean;
@@ -265,6 +302,7 @@ function EventCard({
   onStatusChange: (id: string, status: EventStatus) => void;
   onNavigate: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (event: EventRecord) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const canDelete = event.status !== 'active';
@@ -315,11 +353,19 @@ function EventCard({
           />
         </div>
 
-        {/* Delete — two-step confirm; stopPropagation prevents card navigation */}
-        {canDelete && (
-          <div className="border-t pt-3" onClick={(e) => e.stopPropagation()}>
-            {confirmDelete ? (
-              <div className="flex items-center gap-3">
+        {/* Card actions — stopPropagation prevents card navigation */}
+        <div className="flex flex-wrap items-center gap-3 border-t pt-3" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onEdit(event)}
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground"
+          >
+            <Pencil className="h-3 w-3" />
+            Edit event
+          </button>
+
+          {canDelete && (
+            confirmDelete ? (
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => { onDelete(event.id); setConfirmDelete(false); }}
                   disabled={deleting}
@@ -342,25 +388,44 @@ function EventCard({
                 <Trash2 className="h-3 w-3" />
                 Delete event
               </button>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Create Event Modal ───────────────────────────────────────────────────────
+// ── Event Modal (create + edit) ───────────────────────────────────────────────
 
-function CreateEventModal({
+function EventModal({
+  editEvent,
   onClose,
-  onCreated,
+  onSaved,
 }: {
+  editEvent: EventRecord | null;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
+  const isEditing = editEvent !== null;
   const { toast } = useToast();
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+
+  const [form, setForm] = useState<FormState>(() =>
+    isEditing
+      ? {
+          title: editEvent.title,
+          description: editEvent.description ?? '',
+          event_date: toDatetimeLocalValue(editEvent.event_date),
+          capacity: editEvent.capacity.toString(),
+          category: editEvent.category ?? '',
+          image: null,
+          existingImageUrl: editEvent.image_url,
+          maxTickets: editEvent.max_tickets_per_user.toString(),
+        }
+      : EMPTY_FORM,
+  );
+
+  // preview holds the blob URL for a newly selected file
   const [preview, setPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const previewUrlRef = useRef<string | null>(null);
@@ -380,6 +445,9 @@ function CreateEventModal({
     };
   }, []);
 
+  // The displayed image: a newly selected file blob takes precedence over the DB URL
+  const displayedPreview = preview ?? form.existingImageUrl;
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setForm((prev) => ({ ...prev, image: file }));
@@ -395,7 +463,7 @@ function CreateEventModal({
   }
 
   function clearImage() {
-    setForm((prev) => ({ ...prev, image: null }));
+    setForm((prev) => ({ ...prev, image: null, existingImageUrl: null }));
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = null;
     setPreview(null);
@@ -405,13 +473,18 @@ function CreateEventModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const cap = parseInt(form.capacity, 10);
+    const maxTix = parseInt(form.maxTickets, 10);
     if (!form.title.trim()) return toast.error('Title is required.');
     if (!form.event_date) return toast.error('Event date is required.');
     if (isNaN(cap) || cap < 1) return toast.error('Capacity must be a positive number.');
+    if (isNaN(maxTix) || maxTix < 1) return toast.error('Max tickets per user must be at least 1.');
 
     setSubmitting(true);
     try {
-      let imageUrl: string | null = null;
+      // Determine final image URL:
+      // 1. New file selected → upload it
+      // 2. No new file → keep existingImageUrl (null if the admin cleared it)
+      let imageUrl: string | null = form.existingImageUrl;
 
       if (form.image) {
         const ext = form.image.name.split('.').pop() ?? 'jpg';
@@ -432,22 +505,39 @@ function CreateEventModal({
         imageUrl = publicUrl;
       }
 
-      const { error: insertError } = await supabase.from('events').insert({
+      const payload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
         event_date: new Date(form.event_date).toISOString(),
         capacity: cap,
+        max_tickets_per_user: maxTix,
         category: form.category.trim() || null,
         image_url: imageUrl,
-        status: 'active',
-      });
-      if (insertError) throw insertError;
+      };
 
-      toast.success('Event created successfully!');
-      onCreated();
+      if (isEditing) {
+        const { error } = await supabase
+          .from('events')
+          .update(payload)
+          .eq('id', editEvent.id);
+        if (error) throw error;
+        toast.success('Event updated successfully!');
+      } else {
+        const { error } = await supabase
+          .from('events')
+          .insert({ ...payload, status: 'active' });
+        if (error) throw error;
+        toast.success('Event created successfully!');
+      }
+
+      onSaved();
       onClose();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create event.');
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : `Failed to ${isEditing ? 'update' : 'create'} event.`,
+      );
     } finally {
       setSubmitting(false);
     }
@@ -458,7 +548,9 @@ function CreateEventModal({
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 my-4 w-full max-w-lg rounded-xl border bg-card shadow-xl">
         <div className="flex items-center justify-between border-b px-6 py-4">
-          <h2 className="text-base font-semibold text-foreground">Create New Event</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            {isEditing ? 'Edit Event' : 'Create New Event'}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -535,10 +627,25 @@ function CreateEventModal({
           </div>
 
           <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">
+              Max Tickets Per User <span className="text-destructive">*</span>
+            </label>
+            <input
+              type="number"
+              required
+              min={1}
+              value={form.maxTickets}
+              onChange={(e) => setForm((p) => ({ ...p, maxTickets: e.target.value }))}
+              placeholder="5"
+              className={inputClass}
+            />
+          </div>
+
+          <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Banner Image</label>
-            {preview ? (
+            {displayedPreview ? (
               <div className="relative overflow-hidden rounded-lg">
-                <img src={preview} alt="Preview" className="h-36 w-full object-cover" />
+                <img src={displayedPreview} alt="Preview" className="h-36 w-full object-cover" />
                 <button
                   type="button"
                   onClick={clearImage}
@@ -550,7 +657,9 @@ function CreateEventModal({
             ) : (
               <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-input px-4 py-8 text-center transition hover:border-primary/50 hover:bg-muted/40">
                 <ImageIcon className="h-8 w-8 text-muted-foreground/50" />
-                <span className="text-sm text-muted-foreground">Click to upload a banner image</span>
+                <span className="text-sm text-muted-foreground">
+                  {isEditing ? 'Click to upload a new banner image' : 'Click to upload a banner image'}
+                </span>
                 <span className="text-xs text-muted-foreground/60">PNG, JPG, WEBP</span>
                 <input
                   ref={fileInputRef}
@@ -577,7 +686,9 @@ function CreateEventModal({
               disabled={submitting}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting ? 'Creating…' : 'Create Event'}
+              {submitting
+                ? isEditing ? 'Saving…' : 'Creating…'
+                : isEditing ? 'Save Changes' : 'Create Event'}
             </button>
           </div>
         </form>
@@ -597,6 +708,7 @@ export default function AdminEvents() {
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -612,7 +724,7 @@ export default function AdminEvents() {
     setLoading(true);
     const { data, error } = await supabase
       .from('events')
-      .select('id, title, description, image_url, event_date, capacity, category, status, created_at')
+      .select('id, title, description, image_url, event_date, capacity, max_tickets_per_user, category, status, created_at')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -641,10 +753,7 @@ export default function AdminEvents() {
 
   async function handleDeleteEvent(id: string) {
     setDeletingId(id);
-    const { error } = await supabase
-      .from('events')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('events').delete().eq('id', id);
 
     if (error) {
       toast.error(error.message);
@@ -653,6 +762,21 @@ export default function AdminEvents() {
       setEvents((prev) => prev.filter((e) => e.id !== id));
     }
     setDeletingId(null);
+  }
+
+  function openCreate() {
+    setEditingEvent(null);
+    setShowModal(true);
+  }
+
+  function openEdit(event: EventRecord) {
+    setEditingEvent(event);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    setEditingEvent(null);
   }
 
   // ── Derived data ─────────────────────────────────────────────────────────
@@ -698,7 +822,7 @@ export default function AdminEvents() {
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
+          onClick={openCreate}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
         >
           <Plus className="h-4 w-4" />
@@ -707,7 +831,7 @@ export default function AdminEvents() {
         </button>
       </div>
 
-      {/* ── Search bar ───────────────────────────────────────────────────── */}
+      {/* Search bar */}
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -723,7 +847,7 @@ export default function AdminEvents() {
         />
       </div>
 
-      {/* ── Status filter pills ───────────────────────────────────────────── */}
+      {/* Status filter pills */}
       <div className="mb-5 flex flex-wrap gap-2">
         {(['all', 'active', 'cancelled', 'completed'] as const).map((f) => (
           <button
@@ -741,12 +865,12 @@ export default function AdminEvents() {
         ))}
       </div>
 
-      {/* ── Desktop table (md+) ───────────────────────────────────────────── */}
+      {/* Desktop table (md+) */}
       <div className="hidden overflow-x-auto rounded-xl border md:block">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b bg-muted/40">
-              {['', 'Title', 'Category', 'Date', 'Cap.', 'Status', '', ''].map((h, i) => (
+              {['', 'Title', 'Category', 'Date', 'Cap.', 'Status', 'Actions', ''].map((h, i) => (
                 <th
                   key={i}
                   className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
@@ -768,6 +892,7 @@ export default function AdminEvents() {
                     onStatusChange={handleStatusChange}
                     onNavigate={(id) => navigate(`/admin/events/${id}`)}
                     onDelete={handleDeleteEvent}
+                    onEdit={openEdit}
                   />
                 ))}
           </tbody>
@@ -780,7 +905,7 @@ export default function AdminEvents() {
         )}
       </div>
 
-      {/* ── Mobile card grid (< md) ───────────────────────────────────────── */}
+      {/* Mobile card grid (< md) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
         {loading
           ? [0, 1, 2, 3].map((i) => <CardSkeleton key={i} />)
@@ -799,15 +924,17 @@ export default function AdminEvents() {
                   onStatusChange={handleStatusChange}
                   onNavigate={(id) => navigate(`/admin/events/${id}`)}
                   onDelete={handleDeleteEvent}
+                  onEdit={openEdit}
                 />
               ))}
       </div>
 
-      {/* ── Create modal ─────────────────────────────────────────────────── */}
+      {/* Create / Edit modal */}
       {showModal && (
-        <CreateEventModal
-          onClose={() => setShowModal(false)}
-          onCreated={fetchEvents}
+        <EventModal
+          editEvent={editingEvent}
+          onClose={closeModal}
+          onSaved={fetchEvents}
         />
       )}
     </main>

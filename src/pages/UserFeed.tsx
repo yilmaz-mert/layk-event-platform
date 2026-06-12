@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CalendarDays, Search, Tag } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { useToast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ function formatDate(iso: string) {
   }).format(new Date(iso));
 }
 
-// ── Skeleton card ────────────────────────────────────────────────────────────
+// ── Skeleton card ─────────────────────────────────────────────────────────────
 
 function SkeletonCard() {
   return (
@@ -52,32 +52,25 @@ function SkeletonCard() {
   );
 }
 
-// ── Event card ───────────────────────────────────────────────────────────────
+// ── Event card ────────────────────────────────────────────────────────────────
 
 interface EventCardProps {
   event: Event;
   isBooked: boolean;
   isApproved: boolean;
-  isBooking: boolean;
-  onBook: (id: string) => void;
   isPast?: boolean;
 }
 
-function EventCard({
-  event,
-  isBooked,
-  isApproved,
-  isBooking,
-  onBook,
-  isPast = false,
-}: EventCardProps) {
+function EventCard({ event, isBooked, isApproved, isPast = false }: EventCardProps) {
   const spotsLeft = event.capacity - event.booked_count;
   const isSoldOut = spotsLeft <= 0;
 
   return (
-    <article
+    <Link
+      to={`/events/${event.id}`}
       className={cn(
-        'flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md',
+        'flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm',
+        'transition-shadow hover:shadow-md',
         isPast && 'opacity-65',
       )}
     >
@@ -138,36 +131,35 @@ function EventCard({
           <p className="line-clamp-2 text-sm text-muted-foreground">{event.description}</p>
         )}
 
-        {/* Book / status button — pinned to bottom of card */}
+        {/* Status CTA — pinned to bottom; non-interactive, card handles navigation */}
         <div className="mt-auto pt-1">
           {isPast ? null : isBooked ? (
             <div className="rounded-lg bg-green-500/10 px-4 py-2 text-center text-sm font-medium text-green-600 dark:text-green-400">
               ✓ You&apos;re registered
             </div>
           ) : !isApproved ? (
-            <div className="w-full cursor-not-allowed rounded-lg border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
               Pending Approval
             </div>
+          ) : isSoldOut ? (
+            <div className="rounded-lg bg-muted px-4 py-2 text-center text-sm font-semibold text-muted-foreground">
+              Sold Out
+            </div>
           ) : (
-            <button
-              onClick={() => onBook(event.id)}
-              disabled={isSoldOut || isBooking}
-              className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isBooking ? 'Booking…' : isSoldOut ? 'Sold Out' : 'Book Now'}
-            </button>
+            <div className="w-full rounded-lg bg-primary px-4 py-2 text-center text-sm font-semibold text-primary-foreground">
+              Book Now →
+            </div>
           )}
         </div>
       </div>
-    </article>
+    </Link>
   );
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function UserFeed() {
   const { profile } = useAuth();
-  const { toast } = useToast();
 
   const [events, setEvents] = useState<Event[]>([]);
   const [myReservations, setMyReservations] = useState<Set<string>>(new Set());
@@ -175,7 +167,6 @@ export default function UserFeed() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [bookingEventId, setBookingEventId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -209,28 +200,7 @@ export default function UserFeed() {
     }
   }
 
-  async function handleBookNow(eventId: string) {
-    if (!profile?.id) return;
-    setBookingEventId(eventId);
-
-    const { error } = await supabase.rpc('book_event', {
-      user_uuid: profile.id,
-      event_uuid: eventId,
-    });
-
-    if (error) {
-      toast.error(error.message);
-      // Refresh so the capacity badge reflects current state (e.g. race-condition sold-out)
-      await fetchData();
-    } else {
-      toast.success('Booking confirmed! See you there.');
-      await fetchData();
-    }
-
-    setBookingEventId(null);
-  }
-
-  // ── Derived data ─────────────────────────────────────────────────────────
+  // ── Derived data ──────────────────────────────────────────────────────────
 
   const now = new Date();
 
@@ -257,11 +227,11 @@ export default function UserFeed() {
 
   const isApproved = profile?.approval_status === 'approved';
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-16 pt-6">
-      {/* ── Search bar ───────────────────────────────────────────────────── */}
+      {/* Search bar */}
       {!loading && !error && (
         <div className="relative mb-4">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -279,7 +249,7 @@ export default function UserFeed() {
         </div>
       )}
 
-      {/* ── Category filter bar ──────────────────────────────────────────── */}
+      {/* Category filter bar */}
       {!loading && !error && categories.length > 1 && (
         <div className="-mx-4 mb-6 overflow-x-auto px-4">
           <div className="flex gap-2 pb-1" style={{ width: 'max-content' }}>
@@ -301,16 +271,14 @@ export default function UserFeed() {
         </div>
       )}
 
-      {/* ── Skeleton loaders ─────────────────────────────────────────────── */}
+      {/* Skeleton loaders */}
       {loading && (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <SkeletonCard key={i} />
-          ))}
+          {[0, 1, 2, 3, 4, 5].map((i) => <SkeletonCard key={i} />)}
         </div>
       )}
 
-      {/* ── Error state ──────────────────────────────────────────────────── */}
+      {/* Error state */}
       {!loading && error && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-center">
           <p className="text-sm text-destructive">{error}</p>
@@ -323,10 +291,9 @@ export default function UserFeed() {
         </div>
       )}
 
-      {/* ── Content ──────────────────────────────────────────────────────── */}
+      {/* Content */}
       {!loading && !error && (
         <>
-          {/* Upcoming events */}
           <section>
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Upcoming Events
@@ -347,15 +314,12 @@ export default function UserFeed() {
                     event={event}
                     isBooked={myReservations.has(event.id)}
                     isApproved={isApproved}
-                    isBooking={bookingEventId === event.id}
-                    onBook={handleBookNow}
                   />
                 ))}
               </div>
             )}
           </section>
 
-          {/* Past events */}
           {past.length > 0 && (
             <section className="mt-12">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -368,8 +332,6 @@ export default function UserFeed() {
                     event={event}
                     isBooked={myReservations.has(event.id)}
                     isApproved={isApproved}
-                    isBooking={bookingEventId === event.id}
-                    onBook={handleBookNow}
                     isPast
                   />
                 ))}

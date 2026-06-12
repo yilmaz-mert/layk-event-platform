@@ -8,6 +8,7 @@ import Login from '@/pages/Login';
 import UserFeed from '@/pages/UserFeed';
 import MyBookings from '@/pages/MyBookings';
 import UserProfile from '@/pages/UserProfile';
+import EventDetails from '@/pages/EventDetails';
 import AdminDashboard from '@/pages/AdminDashboard';
 import AdminEvents from '@/pages/AdminEvents';
 import AdminEventDetails from '@/pages/AdminEventDetails';
@@ -25,6 +26,7 @@ export default function App() {
                 <Route path="/" element={<UserFeed />} />
                 <Route path="/my-bookings" element={<MyBookings />} />
                 <Route path="/profile" element={<UserProfile />} />
+                <Route path="/events/:id" element={<EventDetails />} />
               </Route>
             </Route>
 

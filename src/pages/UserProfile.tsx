@@ -42,20 +42,28 @@ export default function UserProfile() {
     if (!profile?.id) return;
     setSaving(true);
 
+    const trimmedName = fullName.trim() || null;
+    const trimmedPhone = phoneNumber.trim() || null;
+
     const { error } = await supabase
       .from('users')
-      .update({
-        full_name: fullName.trim() || null,
-        phone_number: phoneNumber.trim() || null,
-      })
+      .update({ full_name: trimmedName, phone_number: trimmedPhone })
       .eq('id', profile.id);
 
     if (error) {
+      console.error(error);
       toast.error(error.message);
-    } else {
-      toast.success('Profile updated successfully.');
+      setSaving(false);
+      return;
     }
 
+    // Sync auth metadata (best-effort; non-fatal)
+    await supabase.auth.updateUser({ data: { full_name: trimmedName, phone_number: trimmedPhone } });
+
+    // Re-fetch the persisted row so inputs reflect exactly what is in the DB
+    await fetchProfile(profile.id);
+
+    toast.success('Profile updated.');
     setSaving(false);
   }
 

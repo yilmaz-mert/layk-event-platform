@@ -478,7 +478,7 @@ function UserProfileDrawer({
               <MetaRow
                 icon={<Phone className="h-4 w-4" />}
                 label="Phone"
-                value={user.phone_number ?? 'Not provided'}
+                value={user.phone_number ?? 'No phone provided'}
                 dimmed={!user.phone_number}
               />
               <MetaRow
@@ -561,10 +561,18 @@ function UserTableRow({
       )}
       onClick={() => onView(user)}
     >
-      {/* Name + email */}
+      {/* Name + email + phone */}
       <td className="p-4">
-        <p className="text-sm font-medium text-foreground">{user.full_name ?? '—'}</p>
+        <p className="text-sm font-medium text-foreground">
+          {user.full_name ?? <span className="italic text-muted-foreground/50">No name set</span>}
+        </p>
         <p className="mt-0.5 text-xs text-muted-foreground">{user.email}</p>
+        <p className={cn(
+          'mt-0.5 text-xs',
+          user.phone_number ? 'text-muted-foreground' : 'italic text-muted-foreground/40',
+        )}>
+          {user.phone_number ?? 'No phone provided'}
+        </p>
       </td>
 
       {/* Role select — stopPropagation prevents opening the drawer */}
@@ -630,6 +638,12 @@ function UserCard({
             )}
           </div>
           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+          <p className={cn(
+            'truncate text-xs',
+            user.phone_number ? 'text-muted-foreground' : 'italic text-muted-foreground/40',
+          )}>
+            {user.phone_number ?? 'No phone provided'}
+          </p>
         </div>
         <StatusBadge status={user.approval_status} />
       </div>
