@@ -725,7 +725,25 @@ export default function AdminEvents() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   useEffect(() => {
-    fetchEvents();
+    let isMounted = true;
+
+    async function load() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, title, description, image_url, event_date, capacity, max_tickets_per_user, category, status, created_at')
+        .order('created_at', { ascending: false });
+      if (!isMounted) return;
+      if (error) {
+        toast.error(error.message);
+      } else {
+        setEvents(data ?? []);
+      }
+      setLoading(false);
+    }
+
+    load();
+    return () => { isMounted = false; };
   }, []);
 
   async function fetchEvents() {

@@ -169,13 +169,41 @@ export default function UserFeed() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetchData();
+    let isMounted = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [eventsRes, reservationsRes] = await Promise.all([
+          supabase
+            .from('events')
+            .select('id, title, description, image_url, event_date, capacity, booked_count, category, status')
+            .in('status', ['active', 'completed'])
+            .order('event_date', { ascending: true }),
+          supabase
+            .from('reservations')
+            .select('event_id')
+            .eq('status', 'confirmed'),
+        ]);
+        if (!isMounted) return;
+        if (eventsRes.error) throw eventsRes.error;
+        setEvents(eventsRes.data ?? []);
+        setMyReservations(new Set(reservationsRes.data?.map((r) => r.event_id) ?? []));
+      } catch (err: unknown) {
+        if (isMounted) setError(err instanceof Error ? err.message : 'Failed to load events.');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { isMounted = false; };
   }, []);
 
   async function fetchData() {
     setLoading(true);
     setError(null);
-
     try {
       const [eventsRes, reservationsRes] = await Promise.all([
         supabase
@@ -188,9 +216,7 @@ export default function UserFeed() {
           .select('event_id')
           .eq('status', 'confirmed'),
       ]);
-
       if (eventsRes.error) throw eventsRes.error;
-
       setEvents(eventsRes.data ?? []);
       setMyReservations(new Set(reservationsRes.data?.map((r) => r.event_id) ?? []));
     } catch (err: unknown) {
