@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, ChevronRight, Download, Tag, Users, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -187,12 +187,25 @@ function AttendeeHistoryDrawer({
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Tracks the slide-out delay so it can be cancelled on unmount
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Trigger enter animation after first paint
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 10);
     return () => clearTimeout(t);
+  }, []);
+
+  // Clear slide-out timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, []);
 
   // Body scroll lock
@@ -206,7 +219,7 @@ function AttendeeHistoryDrawer({
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setVisible(false);
-        setTimeout(() => onCloseRef.current(), 300);
+        timeoutRef.current = setTimeout(() => onCloseRef.current(), 300);
       }
     }
     document.addEventListener('keydown', onKey);
@@ -216,8 +229,6 @@ function AttendeeHistoryDrawer({
   // Fetch audit log for this reservation
   useEffect(() => {
     let cancelled = false;
-    setLoadingLogs(true);
-    setLogs([]);
 
     supabase
       .from('reservation_audit_logs')
@@ -236,7 +247,7 @@ function AttendeeHistoryDrawer({
 
   function handleClose() {
     setVisible(false);
-    setTimeout(onClose, 300);
+    timeoutRef.current = setTimeout(() => onCloseRef.current(), 300);
   }
 
   return (
@@ -380,11 +391,7 @@ export default function AdminEventDetails() {
   const [loading, setLoading] = useState(true);
   const [selectedAttendee, setSelectedAttendee] = useState<Attendee | null>(null);
 
-  useEffect(() => {
-    if (id) fetchData(id);
-  }, [id]);
-
-  async function fetchData(eventId: string) {
+  const fetchData = useCallback(async (eventId: string) => {
     setLoading(true);
 
     const [eventRes, attendeesRes] = await Promise.all([
@@ -410,7 +417,11 @@ export default function AdminEventDetails() {
     setEvent(eventRes.data);
     setAttendees((attendeesRes.data ?? []) as unknown as Attendee[]);
     setLoading(false);
-  }
+  }, [toast, navigate]);
+
+  useEffect(() => {
+    if (id) fetchData(id);
+  }, [id, fetchData]);
 
   const totalBooked = attendees.reduce((sum, a) => sum + (a.tickets_requested || 1), 0);
   const available = event ? Math.max(event.capacity - totalBooked, 0) : 0;

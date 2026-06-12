@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
@@ -363,12 +363,25 @@ function UserProfileDrawer({
 
   // Stable ref so the Escape handler always calls the latest onClose
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Tracks the slide-out delay so it can be cancelled on unmount
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Trigger slide-in after mount
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 10);
     return () => clearTimeout(t);
+  }, []);
+
+  // Clear slide-out timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, []);
 
   // Lock background scroll
@@ -382,8 +395,6 @@ function UserProfileDrawer({
   // Fetch booking history whenever the viewed user changes
   useEffect(() => {
     let cancelled = false;
-    setLoadingBookings(true);
-    setBookings([]);
 
     supabase
       .from('reservations')
@@ -407,7 +418,7 @@ function UserProfileDrawer({
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setVisible(false);
-        setTimeout(() => onCloseRef.current(), 300);
+        timeoutRef.current = setTimeout(() => onCloseRef.current(), 300);
       }
     }
     document.addEventListener('keydown', onKey);
@@ -416,7 +427,7 @@ function UserProfileDrawer({
 
   function handleClose() {
     setVisible(false);
-    setTimeout(() => onCloseRef.current(), 300);
+    timeoutRef.current = setTimeout(() => onCloseRef.current(), 300);
   }
 
   const initials = getInitials(user.full_name, user.email);
@@ -701,11 +712,7 @@ export default function AdminDashboard() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const selectedUser = users.find((u) => u.id === selectedUserId) ?? null;
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  async function fetchUsers() {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('users')
@@ -718,7 +725,11 @@ export default function AdminDashboard() {
       setUsers(data ?? []);
     }
     setLoading(false);
-  }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   async function handleStatusChange(userId: string, newStatus: ApprovalStatus) {
     setUpdatingId(userId);
@@ -779,16 +790,12 @@ export default function AdminDashboard() {
       u.email.toLowerCase().includes(searchLower),
     )
     .sort((a, b) => {
-      let cmp = 0;
-      if (sortCol === 'name') {
-        cmp = (a.full_name ?? a.email)
-          .toLowerCase()
-          .localeCompare((b.full_name ?? b.email).toLowerCase());
-      } else if (sortCol === 'status') {
-        cmp = STATUS_ORDER[a.approval_status] - STATUS_ORDER[b.approval_status];
-      } else {
-        cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
+      const cmp =
+        sortCol === 'name'
+          ? (a.full_name ?? a.email).toLowerCase().localeCompare((b.full_name ?? b.email).toLowerCase())
+          : sortCol === 'status'
+            ? STATUS_ORDER[a.approval_status] - STATUS_ORDER[b.approval_status]
+            : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return sortDir === 'asc' ? cmp : -cmp;
     });
 

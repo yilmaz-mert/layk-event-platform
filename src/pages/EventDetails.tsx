@@ -102,7 +102,8 @@ export default function EventDetails() {
       toast.error(
         msg.includes('fully booked') ? 'This event is fully booked.'
           : msg.includes('already booked') ? 'You already have an active booking for this event.'
-            : rpcError.message,
+          : msg.includes('exceed') ? 'You cannot book more than the per-user ticket limit.'
+          : rpcError.message,
       );
     } else {
       toast.success(`Booking confirmed for ${selectedSeats} ${selectedSeats === 1 ? 'seat' : 'seats'}!`);
