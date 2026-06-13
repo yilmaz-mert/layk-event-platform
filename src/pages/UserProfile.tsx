@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,12 +19,6 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const isMounted = useRef(true);
-
-  useEffect(() => {
-    return () => { isMounted.current = false; };
-  }, []);
-
   useEffect(() => {
     if (profile?.id) fetchProfile(profile.id);
   }, [profile?.id]);
@@ -36,7 +30,6 @@ export default function UserProfile() {
       .eq('id', userId)
       .single();
 
-    if (!isMounted.current) return;
     if (data) {
       setFullName(data.full_name ?? '');
       setPhoneNumber(data.phone_number ?? '');
@@ -58,7 +51,6 @@ export default function UserProfile() {
       .eq('id', profile.id);
 
     if (error) {
-      if (!isMounted.current) return;
       console.error(error);
       toast.error(error.message);
       setSaving(false);
@@ -71,7 +63,6 @@ export default function UserProfile() {
     // Re-fetch the persisted row so inputs reflect exactly what is in the DB
     await fetchProfile(profile.id);
 
-    if (!isMounted.current) return;
     toast.success('Profile updated.');
     setSaving(false);
   }

@@ -12,6 +12,7 @@ import EventDetails from '@/pages/EventDetails';
 import AdminDashboard from '@/pages/AdminDashboard';
 import AdminEvents from '@/pages/AdminEvents';
 import AdminEventDetails from '@/pages/AdminEventDetails';
+import AdminBroadcast from '@/pages/AdminBroadcast';
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/events" element={<AdminEvents />} />
                 <Route path="/admin/events/:id" element={<AdminEventDetails />} />
+                <Route path="/admin/broadcast" element={<AdminBroadcast />} />
               </Route>
             </Route>
 

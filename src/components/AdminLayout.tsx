@@ -1,12 +1,14 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { CalendarDays, LogOut, Shield, Users } from 'lucide-react';
+import { CalendarDays, LogOut, Megaphone, Moon, Shield, Sun, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
 
 export default function AdminLayout() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -23,7 +25,7 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground transition-colors">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-5xl items-center gap-1 px-4 py-3">
           {/* Brand */}
@@ -45,6 +47,19 @@ export default function AdminLayout() {
             <CalendarDays className="h-4 w-4" />
             <span className="hidden sm:inline">Events</span>
           </NavLink>
+
+          <NavLink to="/admin/broadcast" className={navClass}>
+            <Megaphone className="h-4 w-4" />
+            <span className="hidden sm:inline">Broadcast</span>
+          </NavLink>
+
+          <button
+            onClick={toggleTheme}
+            className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="Toggle visual theme preference"
+          >
+            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          </button>
 
           <div className="mx-1 h-4 w-px bg-border" />
 

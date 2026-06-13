@@ -1,10 +1,15 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Bookmark, CalendarDays, LogOut, User } from 'lucide-react';
+import { Bookmark, CalendarDays, LogOut, Moon, Sun, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
+import NotificationBell from '@/components/NotificationBell';
 
 export default function UserLayout() {
+  const { profile } = useAuth();
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -40,6 +45,16 @@ export default function UserLayout() {
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Profile</span>
           </NavLink>
+
+          {profile?.id && <NotificationBell userId={profile.id} />}
+
+          <button
+            onClick={toggleTheme}
+            className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="Toggle visual theme preference"
+          >
+            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          </button>
 
           <div className="mx-1 h-4 w-px bg-border" />
 

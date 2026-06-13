@@ -54,10 +54,16 @@ export default function EventDetails() {
   const [error, setError] = useState<string | null>(null);
   const [selectedSeats, setSelectedSeats] = useState(1);
   const [booking, setBooking] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   useEffect(() => {
     if (id && profile?.id) fetchData(id, profile.id);
   }, [id, profile?.id]);
+
+  useEffect(() => {
+    if (reservation) setSelectedSeats(reservation.tickets_requested);
+  }, [reservation]);
 
   async function fetchData(eventId: string, userId: string) {
     setLoading(true);
@@ -83,6 +89,14 @@ export default function EventDetails() {
     } else {
       setEvent(eventRes.data);
       setReservation(reservationRes.data ?? null);
+      // Fire-and-forget: record category interest so the capacity alert
+      // trigger can personalise future notifications for this user.
+      if (eventRes.data.category && userId) {
+        supabase.from('user_interests').upsert(
+          { user_id: userId, category: eventRes.data.category, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,category' },
+        );
+      }
     }
     setLoading(false);
   }
@@ -112,6 +126,43 @@ export default function EventDetails() {
     setBooking(false);
   }
 
+  async function handleUpdate() {
+    if (!profile?.id || !event || !reservation) return;
+    setBooking(true);
+
+    const { error: updateError } = await supabase
+      .from('reservations')
+      .update({ tickets_requested: selectedSeats })
+      .eq('id', reservation.id);
+
+    if (updateError) {
+      toast.error(updateError.message);
+    } else {
+      toast.success(`Updated to ${selectedSeats} ${selectedSeats === 1 ? 'seat' : 'seats'}.`);
+      await fetchData(event.id, profile.id);
+    }
+    setBooking(false);
+  }
+
+  async function handleCancel() {
+    if (!profile?.id || !reservation?.id || !event) return;
+    setCancelling(true);
+
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'cancelled' })
+      .eq('id', reservation.id);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Reservation cancelled successfully.');
+      setShowCancelModal(false);
+      await fetchData(event.id, profile.id);
+    }
+    setCancelling(false);
+  }
+
   // ── Derived values ────────────────────────────────────────────────────────
 
   const spotsLeft = event ? event.capacity - event.booked_count : 0;
@@ -121,7 +172,34 @@ export default function EventDetails() {
   const isApproved = profile?.approval_status === 'approved';
   const isConfirmed = reservation?.status === 'confirmed';
   const maxSeats = Math.min(event?.max_tickets_per_user ?? 5, Math.max(1, spotsLeft));
+  // When editing a confirmed booking, the user's own held seats are already in booked_count,
+  // so add them back to give the correct ceiling for their update.
+  const maxSeatsForUpdate = isConfirmed && reservation && event
+    ? Math.min(event.max_tickets_per_user, Math.max(1, spotsLeft + reservation.tickets_requested))
+    : maxSeats;
   const fillPct = event ? Math.min(100, Math.round((event.booked_count / event.capacity) * 100)) : 0;
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valueStr = e.target.value;
+    if (valueStr === '') {
+      setSelectedSeats(0);
+      return;
+    }
+    const parsed = parseInt(valueStr, 10);
+    if (isNaN(parsed)) return;
+    setSelectedSeats(Math.max(0, parsed));
+  };
+
+  const handleInputBlur = () => {
+    if (selectedSeats < 1) {
+      setSelectedSeats(1);
+      return;
+    }
+    const cap = isConfirmed && reservation ? maxSeatsForUpdate : maxSeats;
+    if (selectedSeats > cap) {
+      setSelectedSeats(cap);
+    }
+  };
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
 
@@ -279,20 +357,69 @@ export default function EventDetails() {
                   : 'This event has already taken place.'}
               </p>
             ) : isConfirmed ? (
-              <div className="space-y-3 text-center">
+              <div className="space-y-3">
                 <p className="text-sm font-semibold text-green-600 dark:text-green-400">
                   ✓ You&apos;re registered
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {reservation!.tickets_requested}{' '}
-                  {reservation!.tickets_requested === 1 ? 'ticket' : 'tickets'} booked
-                </p>
-                <Link
-                  to="/my-bookings"
-                  className="block w-full rounded-lg border px-4 py-2 text-center text-sm font-medium text-foreground transition hover:bg-muted"
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Update seat count
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={selectedSeats <= 1 || booking}
+                        onClick={() => setSelectedSeats((prev) => Math.max(1, prev - 1))}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
+                      >
+                        −
+                      </button>
+
+                      <input
+                        type="number"
+                        value={selectedSeats === 0 ? '' : selectedSeats}
+                        onChange={handleInputChange}
+                        onBlur={handleInputBlur}
+                        disabled={booking}
+                        min={1}
+                        max={maxSeatsForUpdate}
+                        className="h-10 w-20 rounded-lg border border-input bg-background text-center text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition"
+                      />
+
+                      <button
+                        type="button"
+                        disabled={selectedSeats >= maxSeatsForUpdate || booking}
+                        onClick={() => setSelectedSeats((prev) => Math.min(maxSeatsForUpdate, prev + 1))}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    {selectedSeats > maxSeatsForUpdate && (
+                      <p className="animate-pulse text-xs font-medium text-destructive">
+                        Maximum {maxSeatsForUpdate} seats available for this transaction.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleUpdate}
+                  disabled={selectedSeats === reservation!.tickets_requested || selectedSeats > maxSeatsForUpdate || selectedSeats < 1 || booking}
+                  className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Manage booking
-                </Link>
+                  {booking ? 'Updating…' : 'Update Booking'}
+                </button>
+
+                <button
+                  onClick={() => setShowCancelModal(true)}
+                  disabled={cancelling || booking}
+                  className="w-full rounded-lg border border-destructive/30 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel Reservation
+                </button>
               </div>
             ) : !isApproved ? (
               <p className="text-center text-sm text-muted-foreground">
@@ -308,29 +435,49 @@ export default function EventDetails() {
                   <label className="text-xs font-medium text-muted-foreground">
                     Number of seats
                   </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setSelectedSeats((s) => Math.max(1, s - 1))}
-                      disabled={selectedSeats <= 1}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-lg text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      −
-                    </button>
-                    <span className="flex-1 text-center text-sm font-semibold">{selectedSeats}</span>
-                    <button
-                      onClick={() => setSelectedSeats((s) => Math.min(maxSeats, s + 1))}
-                      disabled={selectedSeats >= maxSeats}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-lg text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      +
-                    </button>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={selectedSeats <= 1 || booking}
+                        onClick={() => setSelectedSeats((prev) => Math.max(1, prev - 1))}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
+                      >
+                        −
+                      </button>
+
+                      <input
+                        type="number"
+                        value={selectedSeats === 0 ? '' : selectedSeats}
+                        onChange={handleInputChange}
+                        onBlur={handleInputBlur}
+                        disabled={booking}
+                        min={1}
+                        max={maxSeats}
+                        className="h-10 w-20 rounded-lg border border-input bg-background text-center text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition"
+                      />
+
+                      <button
+                        type="button"
+                        disabled={selectedSeats >= maxSeats || booking}
+                        onClick={() => setSelectedSeats((prev) => Math.min(maxSeats, prev + 1))}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    {selectedSeats > maxSeats && (
+                      <p className="animate-pulse text-xs font-medium text-destructive">
+                        Maximum {maxSeats} seats available for this transaction.
+                      </p>
+                    )}
                   </div>
-                  <p className="text-right text-xs text-muted-foreground">max {maxSeats}</p>
                 </div>
 
                 <button
                   onClick={handleBook}
-                  disabled={booking}
+                  disabled={selectedSeats > maxSeats || selectedSeats < 1 || booking}
                   className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {booking
@@ -342,6 +489,44 @@ export default function EventDetails() {
           </div>
         </div>
       </div>
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => !cancelling && setShowCancelModal(false)}
+          />
+
+          {/* Dialog */}
+          <div className="relative w-full max-w-md rounded-2xl border bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">
+              Cancel Reservation
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Are you sure you want to cancel your reservation for this event? This action will release your seats back into the public pool and cannot be undone.
+            </p>
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={() => setShowCancelModal(false)}
+                className="rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+              >
+                Keep Reservation
+              </button>
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={handleCancel}
+                className="flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling…' : 'Yes, Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

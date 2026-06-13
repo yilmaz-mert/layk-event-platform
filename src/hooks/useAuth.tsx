@@ -43,14 +43,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function fetchProfile(userId: string) {
-    const { data } = await supabase
+  async function fetchProfile(userId: string, attempt = 1): Promise<void> {
+    const maxAttempts = 3;
+
+    const { data, error } = await supabase
       .from('users')
       .select('id, full_name, email, role, approval_status')
       .eq('id', userId)
       .single();
 
-    if (data && data.role !== 'admin' && data.approval_status !== 'approved') {
+    // Correct non-blocking async delay that preserves the loading lifecycle
+    if ((error || !data) && attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return fetchProfile(userId, attempt + 1);
+    }
+
+    if (data && data.approval_status === 'rejected') {
       await supabase.auth.signOut();
       setSession(null);
       setProfile(null);

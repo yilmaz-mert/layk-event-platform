@@ -4,7 +4,12 @@
       "Bash(New-Item *)",
       "Bash(npx kill-port *)",
       "Bash(npm run *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(npm *)"
     ]
+  },
+  "enabledPlugins": {
+    "claude-md-management@claude-plugins-official": true
   }
 }
