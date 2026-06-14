@@ -9,7 +9,8 @@
       "PowerShell(npm *)",
       "Bash(git -C C:/Users/Mert/event-reservation-app status --short)",
       "PowerShell(New-Item *)",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "PowerShell(npm show *)"
     ]
   },
   "enabledPlugins": {

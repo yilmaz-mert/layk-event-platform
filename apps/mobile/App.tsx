@@ -1,27 +1,37 @@
 import './global.css';
 
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView, Text, View } from 'react-native';
+import { MobileAuthProvider, useAuthMobile } from './src/hooks/useAuthMobile';
 import { useMobileRealtimeSync } from './src/hooks/useMobileRealtimeSync';
+import { initPushNotifications } from './src/lib/notifications';
+import Navigator from './src/navigation/Navigator';
 
-export default function App() {
-  // Reconnects Supabase Realtime WebSockets whenever the app
-  // transitions from background → foreground (Phase 4 requirement).
+function AppContent() {
+  const { profile } = useAuthMobile();
+
+  // Reconnects Supabase Realtime WebSockets on background → foreground transitions
   useMobileRealtimeSync();
 
+  // Register and persist Expo Push Token once profile is loaded
+  useEffect(() => {
+    if (profile?.id) {
+      initPushNotifications(profile.id);
+    }
+  }, [profile?.id]);
+
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="flex-1 items-center justify-center gap-4 p-6">
-        <Text className="text-2xl font-bold text-foreground">L'Ayk</Text>
-        <Text className="text-sm text-muted-foreground text-center">
-          Mobile app scaffolded. Screens will be added in Phase 5.
-        </Text>
-        <View className="h-px w-full bg-border" />
-        <Text className="text-xs text-muted-foreground">
-          Realtime sync active · SecureStore session enabled
-        </Text>
-      </View>
+    <>
+      <Navigator />
       <StatusBar style="auto" />
-    </SafeAreaView>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <MobileAuthProvider>
+      <AppContent />
+    </MobileAuthProvider>
   );
 }
