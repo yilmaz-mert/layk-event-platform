@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
-import { cn } from '@/lib/utils';
+import { supabase } from '@layk/core';
+import { useAuth } from '@layk/core';
+import { cn } from '@layk/core';
 
 type Mode = 'login' | 'signup';
 

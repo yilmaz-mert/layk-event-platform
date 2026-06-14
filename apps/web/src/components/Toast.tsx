@@ -1,4 +1,4 @@
-import {
+﻿import {
   createContext,
   useCallback,
   useContext,
@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { CheckCircle2, X, XCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@layk/core';
 
 type ToastVariant = 'success' | 'error';
 

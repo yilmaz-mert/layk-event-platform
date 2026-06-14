@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Trash2, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@layk/core';
 import { useToast } from '@/components/Toast';
-import { cn } from '@/lib/utils';
+import { cn } from '@layk/core';
 import { activeTicketId } from '@/lib/activeTicket';
 
 interface Notification {

@@ -19,7 +19,9 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@layk/core": ["../../packages/core/src/index.ts"],
+      "@layk/core/*": ["../../packages/core/src/*"]
     },
 
     /* Linting */

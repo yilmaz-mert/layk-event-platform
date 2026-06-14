@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@layk/core": "*",
     "@radix-ui/react-slot": "^1.2.5",
     "@supabase/supabase-js": "^2.108.1",
     "class-variance-authority": "^0.7.1",

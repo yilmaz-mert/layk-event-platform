@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+﻿import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { LifeBuoy, Loader2, MessageCircle, Plus, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@layk/core';
+import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
-import { cn } from '@/lib/utils';
+import { cn } from '@layk/core';
 import TicketChat, { type SupportTicket } from '@/components/TicketChat';
 
 function formatDate(iso: string) {

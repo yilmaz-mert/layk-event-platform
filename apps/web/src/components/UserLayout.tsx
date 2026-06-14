@@ -1,9 +1,9 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+﻿import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Bookmark, CalendarDays, LogOut, Moon, Sun, User } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@layk/core';
+import { useAuth } from '@layk/core';
 import { useTheme } from '@/hooks/useTheme';
-import { cn } from '@/lib/utils';
+import { cn } from '@layk/core';
 import NotificationBell from '@/components/NotificationBell';
 
 export default function UserLayout() {

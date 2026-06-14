@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CalendarDays,
   CheckCircle2,
@@ -20,10 +20,10 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@layk/core';
+import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
-import { cn } from '@/lib/utils';
+import { cn } from '@layk/core';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

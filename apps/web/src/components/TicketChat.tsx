@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCheck, Loader2, Send } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@layk/core';
 import { useToast } from '@/components/Toast';
-import { cn } from '@/lib/utils';
+import { cn } from '@layk/core';
 import { setActiveTicketId } from '@/lib/activeTicket';
 
 export interface SupportTicket {

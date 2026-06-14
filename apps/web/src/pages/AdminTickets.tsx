@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { Headphones, Loader2, MessageSquare } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
-import { cn } from '@/lib/utils';
+import { supabase } from '@layk/core';
+import { useAuth } from '@layk/core';
+import { cn } from '@layk/core';
 import TicketChat, { type SupportTicket } from '@/components/TicketChat';
 
 type StatusFilter = 'open' | 'resolved' | 'all';

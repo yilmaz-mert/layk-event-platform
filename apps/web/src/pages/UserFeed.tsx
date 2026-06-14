@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, Search, Tag } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
-import { cn } from '@/lib/utils';
+import { supabase } from '@layk/core';
+import { useAuth } from '@layk/core';
+import { cn } from '@layk/core';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
