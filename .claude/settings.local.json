@@ -6,7 +6,8 @@
       "Bash(npm run *)",
       "Bash(npx tsc *)",
       "PowerShell(Remove-Item *)",
-      "PowerShell(npm *)"
+      "PowerShell(npm *)",
+      "Bash(git -C C:/Users/Mert/event-reservation-app status --short)"
     ]
   },
   "enabledPlugins": {
