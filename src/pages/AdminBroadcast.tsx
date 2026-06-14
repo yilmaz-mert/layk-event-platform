@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Send } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, Search, Send, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/Toast';
+import { cn } from '@/lib/utils';
 
 type TargetType = 'all' | 'specific' | 'event_attendees';
 
@@ -18,6 +19,12 @@ interface EventRow {
   event_date: string;
 }
 
+interface ComboOption {
+  id: string;
+  label: string;
+  sublabel?: string;
+}
+
 function formatEventDate(iso: string): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -25,6 +32,205 @@ function formatEventDate(iso: string): string {
     year: 'numeric',
   }).format(new Date(iso));
 }
+
+// ── Searchable combo component ────────────────────────────────────────────────
+
+function SearchableCombo({
+  options,
+  value,
+  placeholder,
+  emptyMessage,
+  onSelect,
+  onClear,
+}: {
+  options: ComboOption[];
+  value: string;
+  placeholder: string;
+  emptyMessage: string;
+  onSelect: (id: string) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click (mousedown fires before blur, so no flicker)
+  useEffect(() => {
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+        setActiveIndex(-1);
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  const selected = options.find((o) => o.id === value);
+
+  const filtered = query.trim()
+    ? options.filter(
+        (o) =>
+          o.label.toLowerCase().includes(query.toLowerCase()) ||
+          o.sublabel?.toLowerCase().includes(query.toLowerCase()),
+      )
+    : options;
+
+  // Reset keyboard cursor when filtered list changes
+  useEffect(() => { setActiveIndex(-1); }, [query]);
+
+  // Scroll highlighted option into view
+  useEffect(() => {
+    if (activeIndex < 0 || !listRef.current) return;
+    const items = listRef.current.querySelectorAll<HTMLElement>('[data-option]');
+    items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex]);
+
+  function openDropdown() {
+    setOpen(true);
+    inputRef.current?.focus();
+  }
+
+  function closeDropdown() {
+    setOpen(false);
+    setQuery('');
+    setActiveIndex(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (!open) { setOpen(true); return; }
+        setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActiveIndex((i) => Math.max(i - 1, 0));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (open && activeIndex >= 0 && activeIndex < filtered.length) {
+          onSelect(filtered[activeIndex].id);
+          closeDropdown();
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        closeDropdown();
+        break;
+    }
+  }
+
+  if (selected) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2">
+        <span className="flex-1 text-sm font-medium text-foreground">
+          {selected.label}
+          {selected.sublabel && (
+            <span className="ml-1.5 font-normal text-muted-foreground">
+              {selected.sublabel}
+            </span>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={onClear}
+          aria-label="Clear selection"
+          className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Input wrapper — plain div so no button-inside-button nesting */}
+      <div
+        className={cn(
+          'flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2',
+          'transition',
+          open && 'ring-2 ring-ring',
+        )}
+      >
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          aria-expanded={open}
+          aria-autocomplete="list"
+          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+        />
+        {/* Chevron: preventDefault on mousedown stops the input from blurring */}
+        <button
+          type="button"
+          tabIndex={-1}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => (open ? closeDropdown() : openDropdown())}
+          aria-label={open ? 'Close list' : 'Open list'}
+          className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:text-foreground"
+        >
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 transition-transform duration-150',
+              open && 'rotate-180',
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div
+          ref={listRef}
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-input bg-background shadow-lg"
+        >
+          {filtered.length === 0 ? (
+            <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+              {query.trim() ? `No results for "${query}"` : emptyMessage}
+            </p>
+          ) : (
+            filtered.map((o, i) => (
+              <button
+                key={o.id}
+                data-option
+                type="button"
+                role="option"
+                aria-selected={activeIndex === i}
+                /* preventDefault prevents the input losing focus before onClick fires */
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onSelect(o.id); closeDropdown(); }}
+                className={cn(
+                  'flex w-full flex-col gap-0.5 px-3 py-2 text-left transition',
+                  activeIndex === i ? 'bg-muted' : 'hover:bg-muted/60',
+                )}
+              >
+                <span className="text-sm font-medium text-foreground">{o.label}</span>
+                {o.sublabel && (
+                  <span className="text-xs text-muted-foreground">{o.sublabel}</span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AdminBroadcast() {
   const { toast } = useToast();
@@ -60,12 +266,29 @@ export default function AdminBroadcast() {
 
   const approvedUsers = users.filter((u) => u.approval_status === 'approved');
 
+  const userOptions: ComboOption[] = users.map((u) => ({
+    id: u.id,
+    label: u.full_name ?? u.email,
+    sublabel: u.full_name ? u.email : undefined,
+  }));
+
+  const eventOptions: ComboOption[] = events.map((ev) => ({
+    id: ev.id,
+    label: ev.title,
+    sublabel: formatEventDate(ev.event_date),
+  }));
+
   function recipientHint(): string {
     if (targetType === 'all') {
       return `${approvedUsers.length} approved user${approvedUsers.length !== 1 ? 's' : ''} will receive this.`;
     }
     if (targetType === 'specific') return 'One user will receive this.';
     return 'All confirmed attendees of the selected event will receive this.';
+  }
+
+  function resetTargets() {
+    setTargetUserId('');
+    setTargetEventId('');
   }
 
   async function handleBroadcast(e: React.FormEvent) {
@@ -118,8 +341,7 @@ export default function AdminBroadcast() {
       toast.success(`Broadcast sent to ${noun}.`);
       setTitle('');
       setMessage('');
-      setTargetUserId('');
-      setTargetEventId('');
+      resetTargets();
     }
 
     setSending(false);
@@ -136,7 +358,7 @@ export default function AdminBroadcast() {
 
       <div className="rounded-xl border bg-card p-6">
         <form onSubmit={handleBroadcast} className="space-y-5">
-          {/* Audience */}
+          {/* Audience selector */}
           <fieldset>
             <legend className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Audience
@@ -157,8 +379,7 @@ export default function AdminBroadcast() {
                     checked={targetType === value}
                     onChange={() => {
                       setTargetType(value);
-                      setTargetUserId('');
-                      setTargetEventId('');
+                      resetTargets();
                     }}
                     className="accent-primary"
                   />
@@ -168,41 +389,58 @@ export default function AdminBroadcast() {
             </div>
           </fieldset>
 
-          {/* User picker */}
+          {/* Searchable user picker */}
           {targetType === 'specific' && (
-            <select
-              value={targetUserId}
-              onChange={(e) => setTargetUserId(e.target.value)}
-              required
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Select a user…</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name ? `${u.full_name} (${u.email})` : u.email}
-                </option>
-              ))}
-            </select>
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                Search by name or email address
+              </p>
+              <SearchableCombo
+                options={userOptions}
+                value={targetUserId}
+                placeholder="Search users…"
+                emptyMessage="No users available"
+                onSelect={setTargetUserId}
+                onClear={() => setTargetUserId('')}
+              />
+              {/* Hidden required sentinel */}
+              <input
+                tabIndex={-1}
+                value={targetUserId}
+                required
+                onChange={() => {}}
+                className="sr-only"
+                aria-hidden="true"
+              />
+            </div>
           )}
 
-          {/* Event picker */}
+          {/* Searchable event picker */}
           {targetType === 'event_attendees' && (
-            <select
-              value={targetEventId}
-              onChange={(e) => setTargetEventId(e.target.value)}
-              required
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Select an event…</option>
-              {events.map((ev) => (
-                <option key={ev.id} value={ev.id}>
-                  {ev.title} — {formatEventDate(ev.event_date)}
-                </option>
-              ))}
-            </select>
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                Search by event title or date
+              </p>
+              <SearchableCombo
+                options={eventOptions}
+                value={targetEventId}
+                placeholder="Search events…"
+                emptyMessage="No active events"
+                onSelect={setTargetEventId}
+                onClear={() => setTargetEventId('')}
+              />
+              <input
+                tabIndex={-1}
+                value={targetEventId}
+                required
+                onChange={() => {}}
+                className="sr-only"
+                aria-hidden="true"
+              />
+            </div>
           )}
 
-          {/* Title */}
+          {/* Notification title */}
           <input
             type="text"
             value={title}
@@ -212,7 +450,7 @@ export default function AdminBroadcast() {
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
 
-          {/* Message */}
+          {/* Message body */}
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}

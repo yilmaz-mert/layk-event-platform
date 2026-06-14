@@ -7,10 +7,15 @@ import {
   ChevronsUpDown,
   Clock,
   Mail,
+  Minus,
   Phone,
+  Plus,
+  PlusCircle,
   Search,
   ShieldCheck,
   Tag,
+  Ticket,
+  Trash2,
   User as UserIcon,
   X,
   XCircle,
@@ -42,13 +47,25 @@ interface BookingEvent {
   event_date: string;
   category: string | null;
   status: 'active' | 'completed' | 'cancelled';
+  capacity: number;
+  booked_count: number;
 }
 
 interface Booking {
   id: string;
   status: 'confirmed' | 'cancelled';
   created_at: string;
+  tickets_requested: number;
   events: BookingEvent | null;
+}
+
+interface AvailableEvent {
+  id: string;
+  title: string;
+  event_date: string;
+  max_tickets_per_user: number;
+  capacity: number;
+  booked_count: number;
 }
 
 // pending floats to the top on first load
@@ -86,6 +103,14 @@ function getInitials(name: string | null, email: string): string {
       : parts[0].slice(0, 2).toUpperCase();
   }
   return email.slice(0, 2).toUpperCase();
+}
+
+function isUpcomingConfirmed(booking: Booking): boolean {
+  return (
+    booking.status === 'confirmed' &&
+    booking.events !== null &&
+    new Date(booking.events.event_date) > new Date()
+  );
 }
 
 // ── Skeleton loaders ─────────────────────────────────────────────────────────
@@ -296,10 +321,110 @@ function MetaRow({
   );
 }
 
-function BookingItem({ booking }: { booking: Booking }) {
-  const ev = booking.events;
+// ── Ticket counter ────────────────────────────────────────────────────────────
+
+function TicketCounter({
+  value,
+  min,
+  max,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+}) {
+  // Local string so the user can clear and retype freely; clamped on blur
+  const [raw, setRaw] = useState(String(value));
+
+  useEffect(() => { setRaw(String(value)); }, [value]);
+
+  function commit(str: string) {
+    const n = parseInt(str, 10);
+    if (isNaN(n) || n < min) { setRaw(String(min)); onChange(min); return; }
+    if (n > max) { setRaw(String(max)); onChange(max); return; }
+    setRaw(String(n));
+    onChange(n);
+  }
+
   return (
-    <div className="rounded-xl border bg-card p-3">
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => { const next = Math.max(min, value - 1); setRaw(String(next)); onChange(next); }}
+        disabled={disabled || value <= min}
+        className="flex h-6 w-6 items-center justify-center rounded border border-input bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Minus className="h-3 w-3" />
+      </button>
+      <input
+        type="number"
+        value={raw}
+        min={min}
+        max={max}
+        disabled={disabled}
+        onChange={(e) => {
+          setRaw(e.target.value);
+          const n = parseInt(e.target.value, 10);
+          if (!isNaN(n)) onChange(Math.max(min, Math.min(max, n)));
+        }}
+        onBlur={(e) => commit(e.target.value)}
+        className={cn(
+          'w-10 rounded border border-input bg-background text-center text-sm font-semibold tabular-nums text-foreground',
+          'focus:outline-none focus:ring-2 focus:ring-ring',
+          'disabled:cursor-not-allowed disabled:opacity-40',
+          '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+        )}
+      />
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => { const next = Math.min(max, value + 1); setRaw(String(next)); onChange(next); }}
+        disabled={disabled || value >= max}
+        className="flex h-6 w-6 items-center justify-center rounded border border-input bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+// ── Booking item (with admin controls for upcoming confirmed bookings) ─────────
+
+function AdminBookingItem({
+  booking,
+  onCancel,
+  onUpdateTickets,
+  busy,
+}: {
+  booking: Booking;
+  onCancel: (id: string) => void;
+  onUpdateTickets: (id: string, count: number) => void;
+  busy: boolean;
+}) {
+  const ev = booking.events;
+  const upcoming = isUpcomingConfirmed(booking);
+
+  const [localTickets, setLocalTickets] = useState(booking.tickets_requested);
+
+  // Sync local state after a successful save (parent refreshes bookings)
+  useEffect(() => {
+    setLocalTickets(booking.tickets_requested);
+  }, [booking.tickets_requested]);
+
+  const isDirty = localTickets !== booking.tickets_requested;
+
+  return (
+    <div
+      className={cn(
+        'rounded-xl border bg-card p-3',
+        upcoming && 'border-primary/20 bg-primary/5',
+      )}
+    >
+      {/* Title + status badge */}
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 truncate text-sm font-medium text-foreground">
           {ev?.title ?? '—'}
@@ -316,6 +441,7 @@ function BookingItem({ booking }: { booking: Booking }) {
         </span>
       </div>
 
+      {/* Meta */}
       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {ev?.event_date && (
           <span className="flex items-center gap-1">
@@ -327,6 +453,25 @@ function BookingItem({ booking }: { booking: Booking }) {
           <span className="flex items-center gap-1">
             <Tag className="h-3 w-3 shrink-0" />
             {ev.category}
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <Ticket className="h-3 w-3 shrink-0" />
+          {booking.tickets_requested} ticket{booking.tickets_requested !== 1 ? 's' : ''}
+        </span>
+        {ev && (
+          <span
+            className={cn(
+              'font-medium',
+              ev.booked_count > ev.capacity
+                ? 'text-destructive'
+                : ev.booked_count === ev.capacity
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : '',
+            )}
+          >
+            {ev.booked_count}/{ev.capacity} seats
+            {ev.booked_count > ev.capacity && ' ⚠ overbooked'}
           </span>
         )}
         {ev?.status && (
@@ -344,6 +489,194 @@ function BookingItem({ booking }: { booking: Booking }) {
           </span>
         )}
       </div>
+
+      {/* Admin controls — only for upcoming confirmed bookings */}
+      {upcoming && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Tickets:</span>
+            <TicketCounter
+              value={localTickets}
+              min={1}
+              max={9999}
+              onChange={setLocalTickets}
+              disabled={busy}
+            />
+          </div>
+
+          {isDirty && (
+            <button
+              type="button"
+              onClick={() => onUpdateTickets(booking.id, localTickets)}
+              disabled={busy}
+              className="rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onCancel(booking.id)}
+            disabled={busy}
+            className="ml-auto flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-1 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 className="h-3 w-3" />
+            {busy ? 'Cancelling…' : 'Cancel'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Mini searchable event combo (used in drawer new-booking form) ─────────────
+
+interface EventComboOption {
+  id: string;
+  title: string;
+  event_date: string;
+  max_tickets_per_user: number;
+  capacity: number;
+  booked_count: number;
+}
+
+function EventCombo({
+  options,
+  value,
+  onSelect,
+  onClear,
+  disabled,
+}: {
+  options: EventComboOption[];
+  value: string;
+  onSelect: (id: string) => void;
+  onClear: () => void;
+  disabled?: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  const selected = options.find((o) => o.id === value);
+
+  const filtered = query.trim()
+    ? options.filter((o) => o.title.toLowerCase().includes(query.toLowerCase()))
+    : options;
+
+  if (selected) {
+    const spotsLeft = selected.capacity - selected.booked_count;
+    const overbooked = spotsLeft < 0;
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{selected.title}</p>
+          <p
+            className={cn(
+              'text-xs',
+              overbooked
+                ? 'font-medium text-destructive'
+                : spotsLeft === 0
+                  ? 'font-medium text-amber-600 dark:text-amber-400'
+                  : 'text-muted-foreground',
+            )}
+          >
+            {formatDateTime(selected.event_date)}
+            {overbooked
+              ? ` · ${Math.abs(spotsLeft)} over capacity ⚠`
+              : spotsLeft === 0
+                ? ' · Fully booked'
+                : ` · ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={disabled}
+          aria-label="Clear selection"
+          className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className={cn(
+          'flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2',
+          open && 'ring-2 ring-ring',
+        )}
+      >
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search active events…"
+          disabled={disabled}
+          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
+        />
+      </div>
+
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-input bg-background shadow-lg">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+              {query.trim() ? `No results for "${query}"` : 'No available events'}
+            </p>
+          ) : (
+            filtered.map((o) => {
+              const spotsLeft = o.capacity - o.booked_count;
+              const overbooked = spotsLeft < 0;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { onSelect(o.id); setOpen(false); setQuery(''); }}
+                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition hover:bg-muted"
+                >
+                  <span className="text-sm font-medium text-foreground">{o.title}</span>
+                  <span
+                    className={cn(
+                      'text-xs',
+                      overbooked
+                        ? 'font-medium text-destructive'
+                        : spotsLeft === 0
+                          ? 'font-medium text-amber-600 dark:text-amber-400'
+                          : 'text-muted-foreground',
+                    )}
+                  >
+                    {formatDateTime(o.event_date)}
+                    {overbooked
+                      ? ` · ${Math.abs(spotsLeft)} over capacity ⚠`
+                      : spotsLeft === 0
+                        ? ' · Fully booked'
+                        : ` · ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left`}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -357,16 +690,25 @@ function UserProfileDrawer({
   user: UserRecord;
   onClose: () => void;
 }) {
+  const { toast } = useToast();
+
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [visible, setVisible] = useState(false);
 
+  // Admin action busy states
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // New booking form state
+  const [availableEvents, setAvailableEvents] = useState<AvailableEvent[]>([]);
+  const [newEventId, setNewEventId] = useState('');
+  const [newTickets, setNewTickets] = useState(1);
+  const [creating, setCreating] = useState(false);
+  const [showNewForm, setShowNewForm] = useState(false);
+
   // Stable ref so the Escape handler always calls the latest onClose
   const onCloseRef = useRef(onClose);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   // Tracks the slide-out delay so it can be cancelled on unmount
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -387,31 +729,138 @@ function UserProfileDrawer({
   // Lock background scroll
   useEffect(() => {
     document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, []);
 
-  // Fetch booking history whenever the viewed user changes
+  // ── Data fetching ──────────────────────────────────────────────────────────
+
+  const fetchBookings = useCallback(async () => {
+    setLoadingBookings(true);
+    const { data } = await supabase
+      .from('reservations')
+      .select('id, status, created_at, tickets_requested, events(id, title, event_date, category, status, capacity, booked_count)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    setBookings((data ?? []) as unknown as Booking[]);
+    setLoadingBookings(false);
+  }, [user.id]);
+
+  const fetchAvailableEvents = useCallback(async () => {
+    // Active events the user hasn't already confirmed
+    const { data: reserved } = await supabase
+      .from('reservations')
+      .select('event_id')
+      .eq('user_id', user.id)
+      .eq('status', 'confirmed');
+
+    const confirmedIds = (reserved ?? []).map((r: { event_id: string }) => r.event_id);
+
+    let query = supabase
+      .from('events')
+      .select('id, title, event_date, max_tickets_per_user, capacity, booked_count')
+      .eq('status', 'active')
+      .order('event_date', { ascending: true });
+
+    if (confirmedIds.length > 0) {
+      query = query.not('id', 'in', `(${confirmedIds.join(',')})`);
+    }
+
+    const { data } = await query;
+    setAvailableEvents((data ?? []) as AvailableEvent[]);
+  }, [user.id]);
+
   useEffect(() => {
     let cancelled = false;
+    Promise.all([fetchBookings(), fetchAvailableEvents()]).then(() => {
+      if (cancelled) return;
+    });
+    return () => { cancelled = true; };
+  }, [fetchBookings, fetchAvailableEvents]);
 
-    supabase
+  // ── Admin actions ──────────────────────────────────────────────────────────
+
+  async function handleUpdateTickets(bookingId: string, newCount: number) {
+    setBusyId(bookingId);
+    const booking = bookings.find((b) => b.id === bookingId);
+    const { error } = await supabase
       .from('reservations')
-      .select('id, status, created_at, events(id, title, event_date, category, status)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (!cancelled) {
-          setBookings((data ?? []) as unknown as Booking[]);
-          setLoadingBookings(false);
-        }
-      });
+      .update({ tickets_requested: newCount })
+      .eq('id', bookingId);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [user.id]);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Tickets updated.');
+      if (booking?.events?.title) {
+        await supabase.from('notifications').insert({
+          user_id: user.id,
+          title: 'Reservation Updated',
+          message: `An administrator has updated your reservation for "${booking.events.title}" to ${newCount} ticket${newCount !== 1 ? 's' : ''}.`,
+          type: 'admin_broadcast',
+        });
+      }
+      await Promise.all([fetchBookings(), fetchAvailableEvents()]);
+    }
+    setBusyId(null);
+  }
+
+  async function handleCancelBooking(bookingId: string) {
+    setBusyId(bookingId);
+    const booking = bookings.find((b) => b.id === bookingId);
+    const { error } = await supabase
+      .from('reservations')
+      .update({ status: 'cancelled' })
+      .eq('id', bookingId);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Reservation cancelled.');
+      if (booking?.events?.title) {
+        await supabase.from('notifications').insert({
+          user_id: user.id,
+          title: 'Reservation Cancelled',
+          message: `Your reservation for "${booking.events.title}" has been cancelled by an administrator.`,
+          type: 'admin_broadcast',
+        });
+      }
+      await Promise.all([fetchBookings(), fetchAvailableEvents()]);
+    }
+    setBusyId(null);
+  }
+
+  async function handleCreateBooking() {
+    if (!newEventId) return;
+    setCreating(true);
+    const eventTitle = availableEvents.find((e) => e.id === newEventId)?.title ?? '';
+
+    const { error } = await supabase.rpc('book_event', {
+      p_user_uuid: user.id,
+      p_event_uuid: newEventId,
+      p_requested_seats: newTickets,
+    });
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Reservation created successfully.');
+      if (eventTitle) {
+        await supabase.from('notifications').insert({
+          user_id: user.id,
+          title: 'Reservation Created',
+          message: `An administrator has registered you for "${eventTitle}" with ${newTickets} ticket${newTickets !== 1 ? 's' : ''}.`,
+          type: 'admin_broadcast',
+        });
+      }
+      setNewEventId('');
+      setNewTickets(1);
+      setShowNewForm(false);
+      await Promise.all([fetchBookings(), fetchAvailableEvents()]);
+    }
+    setCreating(false);
+  }
+
+  // ── Close helpers ──────────────────────────────────────────────────────────
 
   // Escape key closes drawer
   useEffect(() => {
@@ -430,7 +879,12 @@ function UserProfileDrawer({
     timeoutRef.current = setTimeout(() => onCloseRef.current(), 300);
   }
 
+  // ── Derived ────────────────────────────────────────────────────────────────
+
   const initials = getInitials(user.full_name, user.email);
+  const selectedEvent = availableEvents.find((e) => e.id === newEventId);
+  // Admins bypass per-user limits; 9999 is the effective no-limit sentinel
+  const maxNewTickets = 9999;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -475,17 +929,14 @@ function UserProfileDrawer({
 
         {/* Scrollable body */}
         <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
-          {/* Profile metadata */}
+
+          {/* ── Profile metadata ───────────────────────────────────────────── */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Profile Details
             </h3>
             <div className="divide-y rounded-xl border bg-muted/30">
-              <MetaRow
-                icon={<Mail className="h-4 w-4" />}
-                label="Email"
-                value={user.email}
-              />
+              <MetaRow icon={<Mail className="h-4 w-4" />} label="Email" value={user.email} />
               <MetaRow
                 icon={<Phone className="h-4 w-4" />}
                 label="Phone"
@@ -514,7 +965,7 @@ function UserProfileDrawer({
             </div>
           </section>
 
-          {/* Booking history */}
+          {/* ── Booking history ────────────────────────────────────────────── */}
           <section>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -537,8 +988,103 @@ function UserProfileDrawer({
               </div>
             ) : (
               <div className="space-y-2">
-                {bookings.map((b) => <BookingItem key={b.id} booking={b} />)}
+                {bookings.map((b) => (
+                  <AdminBookingItem
+                    key={b.id}
+                    booking={b}
+                    onUpdateTickets={handleUpdateTickets}
+                    onCancel={handleCancelBooking}
+                    busy={busyId === b.id}
+                  />
+                ))}
               </div>
+            )}
+          </section>
+
+          {/* ── New reservation ────────────────────────────────────────────── */}
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                New Reservation
+              </h3>
+              {!showNewForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewForm(true)}
+                  className="flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                >
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  Add
+                </button>
+              )}
+            </div>
+
+            {showNewForm && (
+              <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+                {/* Event selector */}
+                <div>
+                  <p className="mb-1.5 text-xs text-muted-foreground">Select event</p>
+                  <EventCombo
+                    options={availableEvents}
+                    value={newEventId}
+                    onSelect={setNewEventId}
+                    onClear={() => { setNewEventId(''); setNewTickets(1); }}
+                    disabled={creating}
+                  />
+                </div>
+
+                {/* Ticket count */}
+                {newEventId && (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      Tickets
+                      {selectedEvent && (
+                        <span className="ml-1 text-muted-foreground/50">
+                          (user limit: {selectedEvent.max_tickets_per_user}, admin override active)
+                        </span>
+                      )}
+                    </p>
+                    <TicketCounter
+                      value={newTickets}
+                      min={1}
+                      max={maxNewTickets}
+                      onChange={setNewTickets}
+                      disabled={creating}
+                    />
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCreateBooking}
+                    disabled={!newEventId || creating}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Ticket className="h-4 w-4" />
+                    {creating ? 'Booking…' : 'Book Event'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewForm(false);
+                      setNewEventId('');
+                      setNewTickets(1);
+                    }}
+                    disabled={creating}
+                    className="rounded-lg border px-3 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!showNewForm && availableEvents.length === 0 && !loadingBookings && (
+              <p className="text-xs text-muted-foreground">
+                This user is already registered for all active events.
+              </p>
             )}
           </section>
         </div>
@@ -586,7 +1132,7 @@ function UserTableRow({
         </p>
       </td>
 
-      {/* Role select — stopPropagation prevents opening the drawer */}
+      {/* Role select */}
       <td className="p-4" onClick={(e) => e.stopPropagation()}>
         <RoleSelect
           value={user.role}
@@ -595,7 +1141,7 @@ function UserTableRow({
         />
       </td>
 
-      {/* Status select — stopPropagation prevents opening the drawer */}
+      {/* Status select */}
       <td className="p-4" onClick={(e) => e.stopPropagation()}>
         <ApprovalSelect
           value={user.approval_status}
@@ -604,7 +1150,7 @@ function UserTableRow({
         />
       </td>
 
-      {/* Joined date + self indicator */}
+      {/* Joined date */}
       <td className="p-4">
         <span className="text-xs text-muted-foreground">{formatJoinDate(user.created_at)}</span>
         {isSelf && (
@@ -707,8 +1253,7 @@ export default function AdminDashboard() {
   const [sortCol, setSortCol] = useState<SortCol>('status');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  // Profile drawer — derive selectedUser from the live users array so inline
-  // select mutations are immediately reflected in the open drawer
+  // Profile drawer
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const selectedUser = users.find((u) => u.id === selectedUserId) ?? null;
 
@@ -780,7 +1325,6 @@ export default function AdminDashboard() {
   // ── Derived data ─────────────────────────────────────────────────────────
 
   const pendingCount = users.filter((u) => u.approval_status === 'pending').length;
-
   const searchLower = searchQuery.toLowerCase().trim();
 
   const displayedUsers = [...users]

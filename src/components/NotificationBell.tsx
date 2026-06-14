@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import { Bell, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
+import { activeTicketId } from '@/lib/activeTicket';
 
 interface Notification {
   id: string;
@@ -27,8 +29,10 @@ function timeAgo(iso: string): string {
 
 export default function NotificationBell({ userId }: { userId: string }) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
@@ -37,7 +41,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
       .select('id, title, message, type, is_read, link_url, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(5);
+      .limit(20);
     if (data) setNotifications(data as Notification[]);
   }, [userId]);
 
@@ -49,7 +53,33 @@ export default function NotificationBell({ userId }: { userId: string }) {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const notif = payload.new as Notification;
+
+          // Suppress badge + audio when the user already has this ticket open
+          if (notif.type === 'ticket_reply' && notif.link_url) {
+            const notifTicketId = new URLSearchParams(
+              notif.link_url.split('?')[1] ?? '',
+            ).get('ticketId');
+            if (notifTicketId !== null && notifTicketId === activeTicketId) {
+              supabase.from('notifications').update({ is_read: true }).eq('id', notif.id);
+              return;
+            }
+          }
+
+          setNotifications((prev) => [notif, ...prev].slice(0, 20));
+          new Audio('/notification.mp3').play().catch(() => {});
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${userId}`,
@@ -82,7 +112,11 @@ export default function NotificationBell({ userId }: { userId: string }) {
       );
     }
     setOpen(false);
-    if (n.link_url) navigate(n.link_url);
+    if (n.type === 'ticket_reply') {
+      navigate(n.link_url ?? '/profile?tab=support');
+    } else if (n.link_url) {
+      navigate(n.link_url);
+    }
   }
 
   async function markAllRead() {
@@ -92,8 +126,42 @@ export default function NotificationBell({ userId }: { userId: string }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   }
 
+  async function handleDismiss(e: React.MouseEvent, notifId: string) {
+    e.stopPropagation();
+    // Optimistic remove
+    setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+    const { error } = await supabase.from('notifications').delete().eq('id', notifId);
+    if (error) {
+      toast.error('Failed to dismiss notification.');
+      fetchNotifications();
+    }
+  }
+
+  async function handleClearAll() {
+    if (notifications.length === 0) return;
+    setClearingAll(true);
+    // Optimistic clear
+    setNotifications([]);
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', userId);
+    if (error) {
+      toast.error('Failed to clear notifications.');
+      fetchNotifications();
+    }
+    setClearingAll(false);
+  }
+
   return (
-    <div ref={dropdownRef} className="relative">
+    <>
+      {open && (
+        <div
+          className="fixed left-0 top-0 z-40 h-screen w-screen bg-black/40 backdrop-blur-md dark:bg-black/60 md:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+      <div ref={dropdownRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Notifications"
@@ -108,31 +176,55 @@ export default function NotificationBell({ userId }: { userId: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border bg-card shadow-xl">
+        <div className="fixed inset-x-4 top-20 z-50 overflow-hidden rounded-xl border bg-card shadow-xl md:absolute md:inset-x-auto md:left-auto md:right-0 md:top-full md:mt-2 md:w-80">
+          {/* Header */}
           <div className="flex items-center justify-between border-b px-4 py-2.5">
-            <span className="text-sm font-semibold text-foreground">Notifications</span>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllRead}
-                className="text-xs text-primary hover:underline"
-              >
-                Mark all read
-              </button>
-            )}
+            <span className="text-sm font-semibold text-foreground">
+              Notifications
+              {notifications.length > 0 && (
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                  ({notifications.length})
+                </span>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllRead}
+                  className="text-xs text-primary hover:underline"
+                >
+                  Mark all read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  disabled={clearingAll}
+                  className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-destructive disabled:opacity-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Clear all
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          {/* List */}
+          <div className="max-h-[400px] overflow-y-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {notifications.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                 No notifications yet.
               </p>
             ) : (
               notifications.map((n) => (
-                <button
+                <div
                   key={n.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleItemClick(n)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleItemClick(n)}
                   className={cn(
-                    'flex w-full gap-3 border-b px-4 py-3 text-left transition last:border-0 hover:bg-muted/50',
+                    'group flex w-full cursor-pointer gap-3 border-b px-4 py-3 text-left transition last:border-0 hover:bg-muted/50',
                     !n.is_read && 'bg-primary/5',
                   )}
                 >
@@ -144,15 +236,29 @@ export default function NotificationBell({ userId }: { userId: string }) {
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{n.title}</p>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{n.message}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground/60">{timeAgo(n.created_at)}</p>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                      {n.message}
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted-foreground/60">
+                      {timeAgo(n.created_at)}
+                    </p>
                   </div>
-                </button>
+                  {/* Dismiss button */}
+                  <button
+                    type="button"
+                    onClick={(e) => handleDismiss(e, n.id)}
+                    aria-label="Dismiss notification"
+                    className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition hover:bg-muted hover:text-muted-foreground group-hover:opacity-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))
             )}
           </div>
         </div>
       )}
     </div>
+    </>
   );
 }

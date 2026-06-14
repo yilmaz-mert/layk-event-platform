@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, Search, Tag } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -167,6 +167,10 @@ export default function UserFeed() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showLeftFade, setShowLeftFade] = useState(false);
+  const [showRightFade, setShowRightFade] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const categoryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     let isMounted = true;
@@ -237,6 +241,28 @@ export default function UserFeed() {
     ),
   ];
 
+  // ── Category scroll effects ───────────────────────────────────────────────
+
+  // Recalculate fade visibility whenever the category list changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowLeftFade(el.scrollLeft > 0);
+    setShowRightFade(el.scrollWidth > el.clientWidth + el.scrollLeft);
+  }, [categories]);
+
+  // Glide the active category button into the center of the scroll row
+  useEffect(() => {
+    categoryRefs.current[selectedCategory]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [selectedCategory]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   const searchLower = searchQuery.toLowerCase().trim();
 
   const filtered = events.filter((e) => {
@@ -277,23 +303,51 @@ export default function UserFeed() {
 
       {/* Category filter bar */}
       {!loading && !error && categories.length > 1 && (
-        <div className="-mx-4 mb-6 overflow-x-auto px-4">
-          <div className="flex gap-2 pb-1" style={{ width: 'max-content' }}>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={cn(
-                  'whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium transition',
-                  selectedCategory === cat
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                )}
-              >
-                {cat}
-              </button>
-            ))}
+        <div className="relative -mx-4 mb-6">
+          {/* Left edge fade — appears once user scrolls away from start */}
+          <div
+            className={cn(
+              'pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-8 bg-gradient-to-r from-background to-transparent transition-opacity',
+              showLeftFade ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+
+          {/* Scrollable row */}
+          <div
+            ref={scrollRef}
+            className="overflow-x-auto px-4 scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              setShowLeftFade(el.scrollLeft > 8);
+              setShowRightFade(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
+            }}
+          >
+            <div className="flex gap-2 pb-1" style={{ width: 'max-content' }}>
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  ref={(el) => { categoryRefs.current[cat] = el; }}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={cn(
+                    'whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium transition',
+                    selectedCategory === cat
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                  )}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Right edge fade — indicates more categories off-screen to the right */}
+          <div
+            className={cn(
+              'pointer-events-none absolute bottom-0 right-0 top-0 z-10 w-8 bg-gradient-to-l from-background to-transparent transition-opacity',
+              showRightFade ? 'opacity-100' : 'opacity-0',
+            )}
+          />
         </div>
       )}
 

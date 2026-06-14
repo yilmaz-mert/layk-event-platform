@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { CalendarDays, LogOut, Megaphone, Moon, Shield, Sun, Users } from 'lucide-react';
+import { CalendarDays, Headphones, LogOut, Megaphone, Moon, Shield, Sun, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
@@ -9,6 +10,26 @@ export default function AdminLayout() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const [openTicketCount, setOpenTicketCount] = useState(0);
+
+  useEffect(() => {
+    async function fetchCount() {
+      const { count } = await supabase
+        .from('support_tickets')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'open');
+      setOpenTicketCount(count ?? 0);
+    }
+
+    fetchCount();
+
+    const channel = supabase
+      .channel('admin-open-ticket-count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, fetchCount)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -51,6 +72,18 @@ export default function AdminLayout() {
           <NavLink to="/admin/broadcast" className={navClass}>
             <Megaphone className="h-4 w-4" />
             <span className="hidden sm:inline">Broadcast</span>
+          </NavLink>
+
+          <NavLink to="/admin/tickets" className={navClass}>
+            <span className="relative">
+              <Headphones className="h-4 w-4" />
+              {openTicketCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold leading-none text-white">
+                  {openTicketCount > 9 ? '9+' : openTicketCount}
+                </span>
+              )}
+            </span>
+            <span className="hidden sm:inline">Tickets</span>
           </NavLink>
 
           <button
