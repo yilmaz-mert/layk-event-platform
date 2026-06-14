@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "L'Ayk",
+    "slug": "layk-mobile",
+    "version": "1.0.0",
+    "scheme": "laykapp",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.layk.mobile"
+    },
+    "android": {
+      "package": "com.layk.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1c2e",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "laykapp"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Allow L'Ayk to access Face ID for secure session storage."
+        }
+      ]
+    ]
+  }
+}

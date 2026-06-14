@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Expo
+.expo
+expo-env.d.ts
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

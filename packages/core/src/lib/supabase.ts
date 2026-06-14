@@ -1,5 +1,5 @@
 /// <reference path="../global.d.ts" />
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 
 // Cross-platform env resolution:
 // - Vite inlines import.meta.env.VITE_* at build time (web)
@@ -21,8 +21,8 @@ function resolveEnv(viteKey: string, expoKey: string): string {
   return '';
 }
 
-const supabaseUrl = resolveEnv('VITE_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_URL');
-const supabaseAnonKey = resolveEnv('VITE_SUPABASE_ANON_KEY', 'EXPO_PUBLIC_SUPABASE_ANON_KEY');
+export const supabaseUrl = resolveEnv('VITE_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_URL');
+export const supabaseAnonKey = resolveEnv('VITE_SUPABASE_ANON_KEY', 'EXPO_PUBLIC_SUPABASE_ANON_KEY');
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
@@ -32,4 +32,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Factory — lets each platform provide its own auth storage adapter.
+// The web singleton below uses browser localStorage (Supabase default).
+// Mobile creates its own instance via createSupabaseClient({ auth: { storage: SecureStore } }).
+export function createSupabaseClient(options?: SupabaseClientOptions<'public'>) {
+  return createClient(supabaseUrl, supabaseAnonKey, options);
+}
+
+export const supabase = createSupabaseClient();
