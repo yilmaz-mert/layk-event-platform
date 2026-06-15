@@ -1,3 +1,49 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Light mode tokens ─────────────────────────────────────────────────────── */
+:root {
+  --background: #ffffff;
+  --card: #ffffff;
+  --card-foreground: #1a1c2e;
+  --popover: #ffffff;
+  --popover-foreground: #1a1c2e;
+  --foreground: #1a1c2e;
+  --primary: #2d2f47;
+  --primary-foreground: #f8f9fb;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #2d2f47;
+  --muted: #f1f5f9;
+  --muted-foreground: #6b7ca4;
+  --accent: #f1f5f9;
+  --accent-foreground: #2d2f47;
+  --destructive: #e44848;
+  --destructive-foreground: #f8f9fb;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #94a3b8;
+}
+
+/* ── Dark mode tokens ──────────────────────────────────────────────────────── */
+.dark {
+  --background: #1a1c2e;
+  --card: #2d2f47;
+  --card-foreground: #f8f9fb;
+  --popover: #2d2f47;
+  --popover-foreground: #f8f9fb;
+  --foreground: #f8f9fb;
+  --primary: #e2e8f0;
+  --primary-foreground: #2d2f47;
+  --secondary: #383a5a;
+  --secondary-foreground: #f8f9fb;
+  --muted: #383a5a;
+  --muted-foreground: #94a3b8;
+  --accent: #383a5a;
+  --accent-foreground: #f8f9fb;
+  --destructive: #f87171;
+  --destructive-foreground: #f8f9fb;
+  --border: #2a2c40;
+  --input: #2e3045;
+  --ring: #6b7db0;
+}

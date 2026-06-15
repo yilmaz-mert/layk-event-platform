@@ -267,7 +267,7 @@ export default function MyBookings({ onEventPress, onChatPress }: Props) {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.reservation_id}
-          contentContainerClassName="px-4 pb-8"
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl

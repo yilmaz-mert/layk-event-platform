@@ -1,5 +1,4 @@
 // ── Shared domain types for the L'Ayk mobile app ────────────────────────────
-// Mirror the exact shape of the Supabase tables used by the web app.
 
 export interface UserProfile {
   id: string;
@@ -28,7 +27,6 @@ export interface UserReservation {
   tickets_requested: number;
 }
 
-// Flattened shape used in MyBookings (reservation + joined event fields)
 export interface BookedEvent {
   reservation_id: string;
   event_id: string;
@@ -40,19 +38,29 @@ export interface BookedEvent {
   created_at: string;
 }
 
-export interface SupportTicket {
+// Real DB table: conversations (id, user_id, subject, status, created_at)
+export interface Conversation {
   id: string;
-  reservation_id: string;
   user_id: string;
+  subject: string | null;
   status: 'open' | 'in_progress' | 'resolved' | 'closed';
   created_at: string;
+  users?: { full_name: string | null; email: string };
 }
 
-export interface TicketMessage {
+// Backward-compat alias — existing imports of SupportTicket continue to work.
+export type SupportTicket = Conversation;
+
+// Real DB table: messages (id, conversation_id, sender_id, content, created_at)
+// sender_name is NOT stored in the DB; it is populated client-side via a users join.
+export interface Message {
   id: string;
-  ticket_id: string;
+  conversation_id: string;
   sender_id: string;
   sender_name: string | null;
   content: string;
   created_at: string;
 }
+
+// Backward-compat alias
+export type TicketMessage = Message;

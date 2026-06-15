@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "L'Ayk",
+    "entryPoint": "./index.js",
     "slug": "layk-mobile",
     "version": "1.0.0",
     "scheme": "laykapp",

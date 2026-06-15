@@ -174,8 +174,8 @@ export default function EventDetails({ eventId, onBack }: Props) {
   if (loading) {
     return (
       <SafeAreaView className="flex-1 bg-background">
-        <Pressable onPress={onBack} className="flex-row items-center gap-1.5 px-4 py-3">
-          <ArrowLeft size={18} color={colors.mutedForeground} />
+        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-gray-200 dark:active:bg-zinc-800">
+          <ArrowLeft size={28} color={colors.mutedForeground} />
           <Text className="text-sm text-muted-foreground">Back</Text>
         </Pressable>
         <View className="gap-5 px-4 pt-2">
@@ -193,8 +193,8 @@ export default function EventDetails({ eventId, onBack }: Props) {
   if (error || !event) {
     return (
       <SafeAreaView className="flex-1 bg-background">
-        <Pressable onPress={onBack} className="flex-row items-center gap-1.5 px-4 py-3">
-          <ArrowLeft size={18} color={colors.mutedForeground} />
+        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-gray-200 dark:active:bg-zinc-800">
+          <ArrowLeft size={28} color={colors.mutedForeground} />
           <Text className="text-sm text-muted-foreground">Back</Text>
         </Pressable>
         <View className="flex-1 items-center justify-center px-6">
@@ -214,8 +214,8 @@ export default function EventDetails({ eventId, onBack }: Props) {
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Back navigation */}
-        <Pressable onPress={onBack} className="flex-row items-center gap-1.5 px-4 py-3">
-          <ArrowLeft size={18} color={colors.mutedForeground} />
+        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-gray-200 dark:active:bg-zinc-800">
+          <ArrowLeft size={28} color={colors.mutedForeground} />
           <Text className="text-sm text-muted-foreground">Events</Text>
         </Pressable>
 

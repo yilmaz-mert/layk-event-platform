@@ -237,7 +237,7 @@ export default function UserFeed({ onEventPress }: Props) {
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'left', 'right']}>
       {/* Search bar */}
       <View className="mx-4 mt-4 mb-2">
-        <View className="flex-row items-center gap-2.5 rounded-xl border border-input bg-background px-3.5 py-2.5">
+        <View className="flex-row items-center gap-2.5 rounded-xl border border-input bg-background px-3.5 py-1.5">
           <Search size={16} color={colors.mutedForeground} />
           <TextInput
             className="flex-1 text-sm text-foreground"
@@ -252,32 +252,33 @@ export default function UserFeed({ onEventPress }: Props) {
 
       {/* Category pills */}
       {categories.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="pb-2"
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 4 }}
-        >
-          {categories.map((cat) => (
-            <Pressable
-              key={cat}
-              onPress={() => setSelectedCategory(cat)}
-              className={`rounded-full border px-4 py-1.5 ${
-                selectedCategory === cat
-                  ? 'border-primary bg-primary'
-                  : 'border-border bg-card'
-              }`}
-            >
-              <Text
-                className={`text-sm font-medium ${
-                  selectedCategory === cat ? 'text-primary-foreground' : 'text-muted-foreground'
+        <View className="py-1 mb-2">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 8 }}
+          >
+            {categories.map((cat) => (
+              <Pressable
+                key={cat}
+                onPress={() => setSelectedCategory(cat)}
+                className={`rounded-full border px-4 py-1.5 ${
+                  selectedCategory === cat
+                    ? 'border-primary bg-primary'
+                    : 'border-border bg-card'
                 }`}
               >
-                {cat}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+                <Text
+                  className={`text-sm font-medium ${
+                    selectedCategory === cat ? 'text-primary-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  {cat}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {/* Loading skeletons */}

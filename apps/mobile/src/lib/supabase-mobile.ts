@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createSupabaseClient } from '@layk/core';
 
@@ -55,12 +56,17 @@ const SecureStoreAdapter = {
   },
 };
 
+// On web, SecureStore is not a real native module — skip it entirely and let
+// Supabase fall back to its built-in localStorage adapter so that
+// onAuthStateChange fires the INITIAL_SESSION event correctly.
+const authStorage = Platform.OS === 'web' ? undefined : SecureStoreAdapter;
+
 // Mobile-specific Supabase client built on the shared credentials from @layk/core.
-// Uses SecureStore so sessions survive app restarts and backgrounding.
+// Uses SecureStore on native so sessions survive app restarts and backgrounding.
 // detectSessionInUrl: false — Expo handles auth redirects via expo-linking instead.
 export const supabase = createSupabaseClient({
   auth: {
-    storage: SecureStoreAdapter,
+    storage: authStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

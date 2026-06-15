@@ -26,8 +26,14 @@ export function MobileAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Safety valve: if Supabase never fires INITIAL_SESSION (e.g. missing env
+    // vars or a storage-adapter failure on web), clear loading after 8 s so
+    // the Login screen renders instead of hanging indefinitely.
+    const safetyTimer = setTimeout(() => setLoading(false), 8000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, currentSession) => {
+        clearTimeout(safetyTimer);
         setSession(currentSession);
         if (currentSession) {
           fetchProfile(currentSession.user.id);
@@ -37,31 +43,40 @@ export function MobileAuthProvider({ children }: { children: ReactNode }) {
         }
       },
     );
-    return () => subscription.unsubscribe();
+
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   async function fetchProfile(userId: string, attempt = 1): Promise<void> {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, full_name, email, role, approval_status')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email, role, approval_status')
+        .eq('id', userId)
+        .single();
 
-    if ((error || !data) && attempt < 3) {
-      await new Promise((r) => setTimeout(r, 1000));
-      return fetchProfile(userId, attempt + 1);
-    }
+      if ((error || !data) && attempt < 3) {
+        await new Promise((r) => setTimeout(r, 1000));
+        return fetchProfile(userId, attempt + 1);
+      }
 
-    if (data?.approval_status === 'rejected') {
-      await supabase.auth.signOut();
-      setSession(null);
+      if (data?.approval_status === 'rejected') {
+        await supabase.auth.signOut();
+        setSession(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      setProfile((data as UserProfile) ?? null);
+      setLoading(false);
+    } catch {
       setProfile(null);
       setLoading(false);
-      return;
     }
-
-    setProfile((data as UserProfile) ?? null);
-    setLoading(false);
   }
 
   return (

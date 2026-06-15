@@ -1,18 +1,25 @@
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, BackHandler, Pressable, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CalendarDays, Ticket, User, type LucideProps } from 'lucide-react-native';
+import {
+  CalendarDays,
+  Ticket,
+  User,
+  type LucideProps,
+} from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
+import { useColors } from '../colors';
 import Login from '../screens/Login';
+import AdminDashboard from '../screens/AdminDashboard';
 import UserFeed from '../screens/UserFeed';
 import MyBookings from '../screens/MyBookings';
+import Support from '../screens/Support';
 import EventDetails from '../screens/EventDetails';
 import TicketChat from '../screens/TicketChat';
 import Profile from '../screens/Profile';
-import { colors } from '../colors';
 
-// ── Screen IDs ─────────────────────────────────────────────────────────────────
+// ── Screen types ──────────────────────────────────────────────────────────────
 
 type Tab = 'feed' | 'bookings' | 'profile';
 
@@ -20,8 +27,14 @@ type Screen =
   | { id: 'feed' }
   | { id: 'bookings' }
   | { id: 'profile' }
+  // Sub-screens (no tab bar shown)
+  | { id: 'support' }
   | { id: 'event-details'; eventId: string }
-  | { id: 'ticket-chat'; reservationId: string; eventTitle: string };
+  // ticketId: for direct-ticket flow (Support screen)
+  // reservationId: for find-or-create flow (MyBookings screen)
+  | { id: 'ticket-chat'; ticketId?: string; reservationId?: string; title: string };
+
+const ROOT_TAB_IDS: Array<Screen['id']> = ['feed', 'bookings', 'profile'];
 
 // ── Bottom tab bar ─────────────────────────────────────────────────────────────
 
@@ -32,11 +45,15 @@ interface TabBarProps {
 
 function TabBar({ active, onPress }: TabBarProps) {
   const insets = useSafeAreaInsets();
-  type IconComponent = React.ComponentType<LucideProps & { size?: number | string; color?: string; strokeWidth?: number | string }>;
+  const c = useColors();
+
+  type IconComponent = React.ComponentType<
+    LucideProps & { size?: number | string; color?: string; strokeWidth?: number | string }
+  >;
   const tabs: { id: Tab; label: string; Icon: IconComponent }[] = [
-    { id: 'feed',     label: 'Events',     Icon: CalendarDays },
-    { id: 'bookings', label: 'My Bookings', Icon: Ticket },
-    { id: 'profile',  label: 'Profile',    Icon: User },
+    { id: 'feed',     label: 'Events',   Icon: CalendarDays },
+    { id: 'bookings', label: 'Bookings', Icon: Ticket },
+    { id: 'profile',  label: 'Profile',  Icon: User },
   ];
 
   return (
@@ -53,12 +70,12 @@ function TabBar({ active, onPress }: TabBarProps) {
             className="flex-1 items-center justify-center pt-2.5 gap-1"
           >
             <Icon
-              size={22}
-              color={isActive ? colors.primary : colors.mutedForeground}
+              size={21}
+              color={isActive ? c.primary : c.mutedForeground}
               strokeWidth={isActive ? 2.5 : 1.75}
             />
             <Text
-              className={`text-[11px] font-medium ${
+              className={`text-[10px] font-medium ${
                 isActive ? 'text-primary' : 'text-muted-foreground'
               }`}
             >
@@ -74,10 +91,11 @@ function TabBar({ active, onPress }: TabBarProps) {
 // ── Pending approval screen ────────────────────────────────────────────────────
 
 function PendingApproval({ onSignOut }: { onSignOut: () => void }) {
+  const c = useColors();
   return (
     <SafeAreaView className="flex-1 items-center justify-center bg-background px-8">
       <View className="h-16 w-16 items-center justify-center rounded-full bg-muted">
-        <Ticket size={32} color={colors.mutedForeground} strokeWidth={1.5} />
+        <Ticket size={32} color={c.mutedForeground} strokeWidth={1.5} />
       </View>
       <Text className="mt-5 text-xl font-bold text-foreground">Awaiting Approval</Text>
       <Text className="mt-2 text-center text-sm text-muted-foreground">
@@ -98,88 +116,112 @@ function PendingApproval({ onSignOut }: { onSignOut: () => void }) {
 
 export default function Navigator() {
   const { session, profile, loading } = useAuthMobile();
+  const c = useColors();
   const [screen, setScreen] = useState<Screen>({ id: 'feed' });
   const [activeTab, setActiveTab] = useState<Tab>('feed');
 
-  // ── Auth loading splash ──────────────────────────────────────────────────
+  // Android hardware back: exit natively from any root tab; go back on sub-screens.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (ROOT_TAB_IDS.includes(screen.id)) return false;
+      setScreen({ id: activeTab });
+      return true;
+    });
+    return () => sub.remove();
+  }, [screen.id, activeTab]);
+
+  // ── Auth loading ──────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={c.primary} />
         <Text className="mt-3 text-sm text-muted-foreground">Loading…</Text>
       </SafeAreaView>
     );
   }
 
-  // ── Unauthenticated ──────────────────────────────────────────────────────
-
   if (!session || !profile) {
     return <Login onAuthenticated={() => setScreen({ id: 'feed' })} />;
   }
 
-  // ── Pending / rejected ───────────────────────────────────────────────────
+  // ── Admin portal interception (bypasses user tab system) ─────────────────
 
-  if (profile.role !== 'admin' && profile.approval_status !== 'approved') {
+  if (profile.role === 'admin') {
     return (
-      <PendingApproval
-        onSignOut={async () => {
-          await supabase.auth.signOut();
-        }}
+      <AdminDashboard
+        onSignOut={async () => { await supabase.auth.signOut(); }}
       />
     );
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Pending / rejected ───────────────────────────────────────────────────
+
+  if (profile.approval_status !== 'approved') {
+    return (
+      <PendingApproval
+        onSignOut={async () => { await supabase.auth.signOut(); }}
+      />
+    );
+  }
+
+  // ── Navigation helpers ────────────────────────────────────────────────────
 
   function goToTab(tab: Tab) {
     setActiveTab(tab);
     setScreen({ id: tab });
   }
 
-  function goToEvent(eventId: string) {
-    setScreen({ id: 'event-details', eventId });
-  }
-
-  function goToChat(reservationId: string, eventTitle: string) {
-    setScreen({ id: 'ticket-chat', reservationId, eventTitle });
-  }
-
   function goBack() {
     setScreen({ id: activeTab });
   }
 
-  // ── Screen rendering ──────────────────────────────────────────────────────
+  // MyBookings passes (reservationId, eventTitle)
+  function goToChat(reservationId: string, eventTitle: string) {
+    setScreen({ id: 'ticket-chat', reservationId, title: eventTitle });
+  }
 
-  const needsTabs = screen.id === 'feed' || screen.id === 'bookings' || screen.id === 'profile';
+  // Support screen passes (ticketId, subject)
+  function goToTicketById(ticketId: string, subject: string) {
+    setScreen({ id: 'ticket-chat', ticketId, title: subject });
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const showTabs = ROOT_TAB_IDS.includes(screen.id);
 
   return (
     <View className="flex-1 bg-background">
-      {/* Tab content */}
       <View className="flex-1">
         {screen.id === 'feed' && (
-          <UserFeed onEventPress={goToEvent} />
+          <UserFeed onEventPress={(id) => setScreen({ id: 'event-details', eventId: id })} />
         )}
         {screen.id === 'bookings' && (
-          <MyBookings onEventPress={goToEvent} onChatPress={goToChat} />
+          <MyBookings
+            onEventPress={(id) => setScreen({ id: 'event-details', eventId: id })}
+            onChatPress={goToChat}
+          />
         )}
         {screen.id === 'profile' && (
-          <Profile />
+          <Profile onSupportPress={() => setScreen({ id: 'support' })} />
+        )}
+        {screen.id === 'support' && (
+          <Support onBack={goBack} onChatPress={goToTicketById} />
         )}
         {screen.id === 'event-details' && (
           <EventDetails eventId={screen.eventId} onBack={goBack} />
         )}
         {screen.id === 'ticket-chat' && (
           <TicketChat
+            ticketId={screen.ticketId}
             reservationId={screen.reservationId}
-            eventTitle={screen.eventTitle}
+            title={screen.title}
             onBack={goBack}
           />
         )}
       </View>
 
-      {/* Bottom tabs — only on top-level screens */}
-      {needsTabs && <TabBar active={activeTab} onPress={goToTab} />}
+      {showTabs && <TabBar active={activeTab} onPress={goToTab} />}
     </View>
   );
 }

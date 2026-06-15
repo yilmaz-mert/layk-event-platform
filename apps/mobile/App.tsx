@@ -1,6 +1,7 @@
 import './global.css';
 
 import { useEffect } from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
@@ -23,7 +24,9 @@ function AppContent() {
 
   return (
     <>
-      <Navigator />
+      <View className={`flex-1 bg-background ${colorScheme === 'dark' ? 'dark' : ''}`}>
+        <Navigator />
+      </View>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </>
   );
