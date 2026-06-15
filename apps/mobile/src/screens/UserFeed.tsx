@@ -5,12 +5,12 @@ import {
   Image,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bookmark, CalendarDays, Search, Tag } from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
@@ -234,9 +234,9 @@ export default function UserFeed({ onEventPress }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView className="flex-1 bg-background" edges={['top', 'left', 'right']}>
       {/* Search bar */}
-      <View className="px-4 pt-4 pb-2">
+      <View className="mx-4 mt-4 mb-2">
         <View className="flex-row items-center gap-2.5 rounded-xl border border-input bg-background px-3.5 py-2.5">
           <Search size={16} color={colors.mutedForeground} />
           <TextInput
@@ -255,8 +255,8 @@ export default function UserFeed({ onEventPress }: Props) {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          className="px-4 pb-2"
-          contentContainerClassName="gap-2 py-1"
+          className="pb-2"
+          contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 4 }}
         >
           {categories.map((cat) => (
             <Pressable

@@ -5,11 +5,11 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   SectionList,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CalendarDays, MessageCircle, Ticket, XCircle } from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
@@ -231,7 +231,7 @@ export default function MyBookings({ onEventPress, onChatPress }: Props) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView className="flex-1 bg-background" edges={['top', 'left', 'right']}>
       {/* Header */}
       <View className="px-5 pt-5 pb-3">
         <Text className="text-2xl font-bold text-foreground">My Bookings</Text>

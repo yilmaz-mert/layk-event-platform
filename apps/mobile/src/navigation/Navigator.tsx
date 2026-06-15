@@ -1,21 +1,25 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, Text, View } from 'react-native';
-import { CalendarDays, Ticket } from 'lucide-react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CalendarDays, Ticket, User, type LucideProps } from 'lucide-react-native';
+import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
 import Login from '../screens/Login';
 import UserFeed from '../screens/UserFeed';
 import MyBookings from '../screens/MyBookings';
 import EventDetails from '../screens/EventDetails';
 import TicketChat from '../screens/TicketChat';
+import Profile from '../screens/Profile';
 import { colors } from '../colors';
 
 // ── Screen IDs ─────────────────────────────────────────────────────────────────
 
-type Tab = 'feed' | 'bookings';
+type Tab = 'feed' | 'bookings' | 'profile';
 
 type Screen =
   | { id: 'feed' }
   | { id: 'bookings' }
+  | { id: 'profile' }
   | { id: 'event-details'; eventId: string }
   | { id: 'ticket-chat'; reservationId: string; eventTitle: string };
 
@@ -27,20 +31,26 @@ interface TabBarProps {
 }
 
 function TabBar({ active, onPress }: TabBarProps) {
-  const tabs: { id: Tab; label: string; Icon: typeof CalendarDays }[] = [
-    { id: 'feed', label: 'Events', Icon: CalendarDays },
+  const insets = useSafeAreaInsets();
+  type IconComponent = React.ComponentType<LucideProps & { size?: number | string; color?: string; strokeWidth?: number | string }>;
+  const tabs: { id: Tab; label: string; Icon: IconComponent }[] = [
+    { id: 'feed',     label: 'Events',     Icon: CalendarDays },
     { id: 'bookings', label: 'My Bookings', Icon: Ticket },
+    { id: 'profile',  label: 'Profile',    Icon: User },
   ];
 
   return (
-    <View className="flex-row border-t border-border bg-card">
+    <View
+      className="flex-row border-t border-border bg-card"
+      style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+    >
       {tabs.map(({ id, label, Icon }) => {
         const isActive = active === id;
         return (
           <Pressable
             key={id}
             onPress={() => onPress(id)}
-            className="flex-1 items-center justify-center py-2.5 gap-1"
+            className="flex-1 items-center justify-center pt-2.5 gap-1"
           >
             <Icon
               size={22}
@@ -114,7 +124,6 @@ export default function Navigator() {
     return (
       <PendingApproval
         onSignOut={async () => {
-          const { supabase } = await import('../lib/supabase-mobile');
           await supabase.auth.signOut();
         }}
       />
@@ -142,7 +151,7 @@ export default function Navigator() {
 
   // ── Screen rendering ──────────────────────────────────────────────────────
 
-  const needsTabs = screen.id === 'feed' || screen.id === 'bookings';
+  const needsTabs = screen.id === 'feed' || screen.id === 'bookings' || screen.id === 'profile';
 
   return (
     <View className="flex-1 bg-background">
@@ -153,6 +162,9 @@ export default function Navigator() {
         )}
         {screen.id === 'bookings' && (
           <MyBookings onEventPress={goToEvent} onChatPress={goToChat} />
+        )}
+        {screen.id === 'profile' && (
+          <Profile />
         )}
         {screen.id === 'event-details' && (
           <EventDetails eventId={screen.eventId} onBack={goBack} />

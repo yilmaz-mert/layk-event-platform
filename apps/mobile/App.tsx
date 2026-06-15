@@ -2,6 +2,8 @@ import './global.css';
 
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useColorScheme } from 'nativewind';
 import { MobileAuthProvider, useAuthMobile } from './src/hooks/useAuthMobile';
 import { useMobileRealtimeSync } from './src/hooks/useMobileRealtimeSync';
 import { initPushNotifications } from './src/lib/notifications';
@@ -9,11 +11,10 @@ import Navigator from './src/navigation/Navigator';
 
 function AppContent() {
   const { profile } = useAuthMobile();
+  const { colorScheme } = useColorScheme();
 
-  // Reconnects Supabase Realtime WebSockets on background → foreground transitions
   useMobileRealtimeSync();
 
-  // Register and persist Expo Push Token once profile is loaded
   useEffect(() => {
     if (profile?.id) {
       initPushNotifications(profile.id);
@@ -23,15 +24,17 @@ function AppContent() {
   return (
     <>
       <Navigator />
-      <StatusBar style="auto" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </>
   );
 }
 
 export default function App() {
   return (
-    <MobileAuthProvider>
-      <AppContent />
-    </MobileAuthProvider>
+    <SafeAreaProvider>
+      <MobileAuthProvider>
+        <AppContent />
+      </MobileAuthProvider>
+    </SafeAreaProvider>
   );
 }

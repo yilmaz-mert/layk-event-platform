@@ -14,23 +14,25 @@
 //   4. The Edge Function approach means no app-side polling is needed and
 //      push delivery works even when the app is fully closed.
 
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from './supabase-mobile';
 
-// Configure how incoming pushes appear while the app is foregrounded
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Returns true when running inside the Expo Go client (SDK 53+ dropped Android
+// push support in Expo Go, so we must skip all Notifications API calls there).
+function isExpoGo(): boolean {
+  return Constants.appOwnership === 'expo';
+}
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  // Expo Go (SDK 53+) removed Android push notifications — bail out silently.
+  if (isExpoGo()) {
+    console.log('[Push] Skipping push setup in Expo Go client.');
+    return null;
+  }
+
   // Push notifications are only available on physical devices
   if (!Device.isDevice) {
     console.warn('[Push] Push notifications require a physical device.');
@@ -89,6 +91,20 @@ export async function savePushTokenToProfile(
 
 // Call once in App.tsx (or a profile-loaded effect) to wire up the full flow.
 export async function initPushNotifications(userId: string): Promise<void> {
+  if (isExpoGo()) return;
+
+  // Configure foreground presentation here (not at module level) so it never
+  // runs in Expo Go, which throws on any Notifications API call on Android SDK 53+.
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+
   const token = await registerForPushNotificationsAsync();
   if (token) {
     await savePushTokenToProfile(userId, token);
