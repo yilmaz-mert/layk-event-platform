@@ -45,7 +45,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       name: "L'Ayk Notifications",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#2d2f47',
+      lightColor: '#0f172a',
     });
   }
 
@@ -62,13 +62,17 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null;
   }
 
-  const tokenData = await Notifications.getExpoPushTokenAsync({
-    // Replace with your actual Expo project ID from app.json / EAS
-    projectId: undefined,
-  });
-
-  console.log('[Push] Expo Push Token:', tokenData.data);
-  return tokenData.data;
+  try {
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      // Replace with your actual Expo project ID from app.json / EAS
+      projectId: undefined,
+    });
+    console.log('[Push] Expo Push Token:', tokenData.data);
+    return tokenData.data;
+  } catch (err) {
+    console.warn('[Push] Failed to obtain push token:', err);
+    return null;
+  }
 }
 
 // Persist the Expo Push Token on the user's profile row so database triggers
@@ -93,20 +97,24 @@ export async function savePushTokenToProfile(
 export async function initPushNotifications(userId: string): Promise<void> {
   if (isExpoGo()) return;
 
-  // Configure foreground presentation here (not at module level) so it never
-  // runs in Expo Go, which throws on any Notifications API call on Android SDK 53+.
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
+  try {
+    // Configure foreground presentation here (not at module level) so it never
+    // runs in Expo Go, which throws on any Notifications API call on Android SDK 53+.
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
 
-  const token = await registerForPushNotificationsAsync();
-  if (token) {
-    await savePushTokenToProfile(userId, token);
+    const token = await registerForPushNotificationsAsync();
+    if (token) {
+      await savePushTokenToProfile(userId, token);
+    }
+  } catch (err) {
+    console.warn('[Push] initPushNotifications failed:', err);
   }
 }

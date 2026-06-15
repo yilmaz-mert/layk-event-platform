@@ -14,9 +14,7 @@ import { ArrowLeft, LifeBuoy, MessageCircle, Plus, X } from 'lucide-react-native
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
 import { useColors } from '../colors';
-import type { Conversation } from '../types';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+import type { SupportTicket } from '../types';
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -43,11 +41,11 @@ function SkeletonTicket() {
 // ── Ticket row ────────────────────────────────────────────────────────────────
 
 function TicketRow({ ticket, selected, onPress }: {
-  ticket: Conversation;
+  ticket: SupportTicket;
   selected: boolean;
   onPress: () => void;
 }) {
-  const isOpen = ticket.status === 'open' || ticket.status === 'in_progress';
+  const isOpen = ticket.status === 'open';
   return (
     <Pressable
       onPress={onPress}
@@ -83,7 +81,7 @@ export default function Support({ onBack, onChatPress }: Props) {
   const { profile } = useAuthMobile();
   const c = useColors();
 
-  const [tickets, setTickets] = useState<Conversation[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -99,13 +97,13 @@ export default function Support({ onBack, onChatPress }: Props) {
     if (isRefresh) setRefreshing(true); else setLoading(true);
 
     const { data } = await supabase
-      .from('conversations')
+      .from('support_tickets')
       .select('id, subject, status, created_at, user_id')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false });
 
     if (!isMounted.current) return;
-    setTickets((data ?? []) as Conversation[]);
+    setTickets((data ?? []) as SupportTicket[]);
     setLoading(false);
     setRefreshing(false);
   }, [profile?.id]);
@@ -115,13 +113,13 @@ export default function Support({ onBack, onChatPress }: Props) {
     void loadTickets();
 
     const channel = supabase
-      .channel('my-conversations')
+      .channel('my-support-tickets')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'conversations' },
+        { event: 'UPDATE', schema: 'public', table: 'support_tickets' },
         (payload) => {
           if (!isMounted.current) return;
-          const updated = payload.new as { id: string; status: Conversation['status'] };
+          const updated = payload.new as { id: string; status: SupportTicket['status'] };
           setTickets((prev) =>
             prev.map((t) => (t.id === updated.id ? { ...t, status: updated.status } : t)),
           );
@@ -141,8 +139,8 @@ export default function Support({ onBack, onChatPress }: Props) {
     setCreating(true);
 
     const { data, error } = await supabase
-      .from('conversations')
-      .insert({ user_id: profile.id, subject: trimmed, status: 'open' })
+      .from('support_tickets')
+      .insert({ user_id: profile.id, subject: trimmed })
       .select('id, subject, status, created_at, user_id')
       .single();
 
@@ -151,7 +149,7 @@ export default function Support({ onBack, onChatPress }: Props) {
     if (error) {
       Alert.alert('Error', error.message);
     } else {
-      const ticket = data as Conversation;
+      const ticket = data as SupportTicket;
       setTickets((prev) => [ticket, ...prev]);
       setSubject('');
       setShowForm(false);

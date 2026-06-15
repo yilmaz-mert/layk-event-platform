@@ -15,7 +15,7 @@ import { Bookmark, CalendarDays, Search, Tag } from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
 import type { Event } from '../types';
-import { colors } from '../colors';
+import { useColors } from '../colors';
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -58,6 +58,7 @@ interface EventCardProps {
 }
 
 function EventCard({ event, isBooked, isApproved, isPast = false, onPress }: EventCardProps) {
+  const c = useColors();
   const spotsLeft = event.capacity - event.booked_count;
   const isSoldOut = spotsLeft <= 0;
 
@@ -84,7 +85,7 @@ function EventCard({ event, isBooked, isApproved, isPast = false, onPress }: Eve
         </View>
       ) : (
         <View className="h-44 items-center justify-center bg-muted">
-          <CalendarDays size={40} color={colors.mutedForeground} strokeWidth={1} />
+          <CalendarDays size={40} color={c.mutedForeground} strokeWidth={1} />
         </View>
       )}
 
@@ -93,7 +94,7 @@ function EventCard({ event, isBooked, isApproved, isPast = false, onPress }: Eve
         <View className="flex-row flex-wrap items-center justify-between gap-2">
           {event.category ? (
             <View className="flex-row items-center gap-1">
-              <Tag size={12} color={colors.mutedForeground} />
+              <Tag size={12} color={c.mutedForeground} />
               <Text className="text-xs font-medium text-muted-foreground">{event.category}</Text>
             </View>
           ) : (
@@ -120,7 +121,7 @@ function EventCard({ event, isBooked, isApproved, isPast = false, onPress }: Eve
         </Text>
 
         <View className="flex-row items-center gap-1.5">
-          <CalendarDays size={13} color={colors.mutedForeground} />
+          <CalendarDays size={13} color={c.mutedForeground} />
           <Text className="text-xs text-muted-foreground">{formatDate(event.event_date)}</Text>
         </View>
 
@@ -163,6 +164,7 @@ interface Props {
 
 export default function UserFeed({ onEventPress }: Props) {
   const { profile } = useAuthMobile();
+  const c = useColors();
   const [events, setEvents] = useState<Event[]>([]);
   const [myReservations, setMyReservations] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -235,14 +237,24 @@ export default function UserFeed({ onEventPress }: Props) {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'left', 'right']}>
+      {/* Brand header */}
+      <View className="flex-row items-center gap-2.5 px-5 pt-5 pb-1">
+        <Image
+          source={require('../../assets/icon.png')}
+          style={{ width: 32, height: 32, borderRadius: 8 }}
+          resizeMode="cover"
+        />
+        <Text className="text-xl font-bold tracking-tight text-foreground">L&apos;Ayk</Text>
+      </View>
+
       {/* Search bar */}
-      <View className="mx-4 mt-4 mb-2">
-        <View className="flex-row items-center gap-2.5 rounded-xl border border-input bg-background px-3.5 py-1.5">
-          <Search size={16} color={colors.mutedForeground} />
+      <View className="mx-4 mt-3 mb-2">
+        <View className="flex-row items-center gap-2.5 rounded-xl border border-input bg-background px-3.5 py-1">
+          <Search size={16} color={c.mutedForeground} />
           <TextInput
             className="flex-1 text-sm text-foreground"
             placeholder="Search events…"
-            placeholderTextColor={colors.mutedForeground}
+            placeholderTextColor={c.mutedForeground}
             value={searchQuery}
             onChangeText={setSearchQuery}
             clearButtonMode="while-editing"
@@ -309,7 +321,7 @@ export default function UserFeed({ onEventPress }: Props) {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => fetchData(true)}
-              tintColor={colors.primary}
+              tintColor={c.primary}
             />
           }
           ListHeaderComponent={upcoming.length > 0 ? (
@@ -339,7 +351,7 @@ export default function UserFeed({ onEventPress }: Props) {
           }}
           ListEmptyComponent={
             <View className="items-center py-20">
-              <Bookmark size={40} color={colors.mutedForeground} strokeWidth={1} />
+              <Bookmark size={40} color={c.mutedForeground} strokeWidth={1} />
               <Text className="mt-3 text-sm font-medium text-foreground">No events found</Text>
               <Text className="mt-1 text-xs text-muted-foreground">
                 {searchQuery ? `No results for "${searchQuery}"` : 'Check back soon'}

@@ -2,48 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Light mode tokens ─────────────────────────────────────────────────────── */
+/*
+  Web-exact palette for NativeWind v4.
+  Source: apps/web/src/index.css uses oklch() — these are the precise hex/rgba
+  equivalents derived via the OKLCH → OKLab → linear-sRGB → sRGB pipeline.
+
+  The web theme is Tailwind SLATE (not zinc), giving backgrounds a premium
+  deep slate-violet character rather than neutral grey.
+
+  Key conversions:
+    oklch(1 0 0)               = #ffffff  (white)
+    oklch(0.129 0.042 264.695) = #020617  (slate-950 — dark background/light text)
+    oklch(0.208 0.042 265.755) = #0f172a  (slate-900 — dark cards/light primary)
+    oklch(0.279 0.041 260.031) = #1e293b  (slate-800 — muted/secondary)
+    oklch(0.554 0.046 257.417) = #64748b  (slate-500 — muted-foreground light)
+    oklch(0.704 0.04  256.788) = #94a3b8  (slate-400 — muted-foreground dark)
+    oklch(0.929 0.013 255.508) = #e2e8f0  (slate-200 — dark primary / light border)
+    oklch(0.968 0.007 247.896) = #f1f5f9  (slate-100 — light muted)
+    oklch(0.984 0.003 247.858) = #f8fafc  (slate-50  — light primary-fg / dark fg)
+    oklch(1 0 0 / 10%)         = rgba(255,255,255,0.10)  (dark border)
+    oklch(1 0 0 / 15%)         = rgba(255,255,255,0.15)  (dark input)
+    oklch(0.577 0.245 27.325)  = #dc2626  (red-600  — light destructive)
+    oklch(0.704 0.191 22.216)  = #f87171  (red-400  — dark destructive)
+*/
+
+/* ── Light mode ─────────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --card: #ffffff;
-  --card-foreground: #1a1c2e;
-  --popover: #ffffff;
-  --popover-foreground: #1a1c2e;
-  --foreground: #1a1c2e;
-  --primary: #2d2f47;
-  --primary-foreground: #f8f9fb;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #2d2f47;
-  --muted: #f1f5f9;
-  --muted-foreground: #6b7ca4;
-  --accent: #f1f5f9;
-  --accent-foreground: #2d2f47;
-  --destructive: #e44848;
-  --destructive-foreground: #f8f9fb;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #94a3b8;
+  --background:            #ffffff;
+  --card:                  #ffffff;
+  --card-foreground:       #020617;
+  --popover:               #ffffff;
+  --popover-foreground:    #020617;
+  --foreground:            #020617;
+  --primary:               #0f172a;
+  --primary-foreground:    #f8fafc;
+  --secondary:             #f1f5f9;
+  --secondary-foreground:  #0f172a;
+  --muted:                 #f1f5f9;
+  --muted-foreground:      #64748b;
+  --accent:                #f1f5f9;
+  --accent-foreground:     #0f172a;
+  --destructive:           #dc2626;
+  --destructive-foreground:#f8fafc;
+  --border:                #e2e8f0;
+  --input:                 #e2e8f0;
+  --ring:                  #94a3b8;
 }
 
-/* ── Dark mode tokens ──────────────────────────────────────────────────────── */
+/* ── Dark mode ──────────────────────────────────────────────────────────────── */
 .dark {
-  --background: #1a1c2e;
-  --card: #2d2f47;
-  --card-foreground: #f8f9fb;
-  --popover: #2d2f47;
-  --popover-foreground: #f8f9fb;
-  --foreground: #f8f9fb;
-  --primary: #e2e8f0;
-  --primary-foreground: #2d2f47;
-  --secondary: #383a5a;
-  --secondary-foreground: #f8f9fb;
-  --muted: #383a5a;
-  --muted-foreground: #94a3b8;
-  --accent: #383a5a;
-  --accent-foreground: #f8f9fb;
-  --destructive: #f87171;
-  --destructive-foreground: #f8f9fb;
-  --border: #2a2c40;
-  --input: #2e3045;
-  --ring: #6b7db0;
+  --background:            #020617;
+  --card:                  #0f172a;
+  --card-foreground:       #f8fafc;
+  --popover:               #0f172a;
+  --popover-foreground:    #f8fafc;
+  --foreground:            #f8fafc;
+  --primary:               #e2e8f0;
+  --primary-foreground:    #0f172a;
+  --secondary:             #1e293b;
+  --secondary-foreground:  #f8fafc;
+  --muted:                 #1e293b;
+  --muted-foreground:      #94a3b8;
+  --accent:                #1e293b;
+  --accent-foreground:     #f8fafc;
+  --destructive:           #f87171;
+  --destructive-foreground:#f8fafc;
+  --border:                rgba(255, 255, 255, 0.10);
+  --input:                 rgba(255, 255, 255, 0.15);
+  --ring:                  #64748b;
 }

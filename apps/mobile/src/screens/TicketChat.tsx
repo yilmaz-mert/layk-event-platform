@@ -15,7 +15,7 @@ import { ArrowLeft, CheckCircle, MessageCircle, Send } from 'lucide-react-native
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
 import { useColors } from '../colors';
-import type { Conversation, Message } from '../types';
+import type { SupportTicket, TicketMessage } from '../types';
 
 function formatTime(iso: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -28,31 +28,29 @@ function formatTime(iso: string) {
 function formatDateSeparator(iso: string) {
   const d = new Date(iso);
   const today = new Date();
-  const isToday =
-    d.getFullYear() === today.getFullYear() &&
-    d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate();
-  if (isToday) return 'Today';
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  if (sameDay(d, today)) return 'Today';
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (
-    d.getFullYear() === yesterday.getFullYear() &&
-    d.getMonth() === yesterday.getMonth() &&
-    d.getDate() === yesterday.getDate()
-  ) return 'Yesterday';
+  if (sameDay(d, yesterday)) return 'Yesterday';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d);
 }
 
 // ── Message bubble ─────────────────────────────────────────────────────────────
 
 interface BubbleProps {
-  message: Message;
+  message: TicketMessage;
   isOwn: boolean;
   showDate: boolean;
   dateLabel: string;
 }
 
 function MessageBubble({ message, isOwn, showDate, dateLabel }: BubbleProps) {
+  const senderLabel = isOwn ? null : message.sender_role === 'admin' ? 'Support' : 'User';
+
   return (
     <View>
       {showDate && (
@@ -68,13 +66,13 @@ function MessageBubble({ message, isOwn, showDate, dateLabel }: BubbleProps) {
             isOwn ? 'rounded-br-sm bg-primary' : 'rounded-bl-sm border border-border bg-card'
           }`}
         >
-          {!isOwn && (
+          {senderLabel && (
             <Text className="mb-1 text-xs font-semibold text-muted-foreground">
-              {message.sender_name ?? 'Support'}
+              {senderLabel}
             </Text>
           )}
           <Text className={`text-sm leading-relaxed ${isOwn ? 'text-primary-foreground' : 'text-foreground'}`}>
-            {message.content}
+            {message.message}
           </Text>
           <Text
             className={`mt-1 text-right text-[10px] ${
@@ -91,17 +89,17 @@ function MessageBubble({ message, isOwn, showDate, dateLabel }: BubbleProps) {
 
 // ── Status badge ───────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: Conversation['status'] }) {
-  const config = {
-    open:        { label: 'Open',        className: 'bg-primary/10',       textClass: 'text-primary' },
-    in_progress: { label: 'In Progress', className: 'bg-yellow-500/10',    textClass: 'text-yellow-600' },
-    resolved:    { label: 'Resolved',    className: 'bg-green-500/10',     textClass: 'text-green-600' },
-    closed:      { label: 'Closed',      className: 'bg-muted',            textClass: 'text-muted-foreground' },
-  }[status] ?? { label: status, className: 'bg-muted', textClass: 'text-muted-foreground' };
-
+function StatusBadge({ status }: { status: SupportTicket['status'] }) {
+  if (status === 'open') {
+    return (
+      <View className="rounded-full bg-green-500/10 px-3 py-1">
+        <Text className="text-xs font-semibold text-green-600">Open</Text>
+      </View>
+    );
+  }
   return (
-    <View className={`rounded-full px-3 py-1 ${config.className}`}>
-      <Text className={`text-xs font-semibold ${config.textClass}`}>{config.label}</Text>
+    <View className="rounded-full bg-muted px-3 py-1">
+      <Text className="text-xs font-semibold text-muted-foreground">Resolved</Text>
     </View>
   );
 }
@@ -109,8 +107,8 @@ function StatusBadge({ status }: { status: Conversation['status'] }) {
 // ── Main screen ────────────────────────────────────────────────────────────────
 
 interface Props {
-  // ticketId: direct conversation lookup (Support screen, Admin portal)
-  // reservationId: find-or-create via booking key embedded in subject (MyBookings)
+  // ticketId: direct lookup from Support screen / AdminDashboard
+  // reservationId: find-or-create via embedded subject key from MyBookings
   ticketId?: string;
   reservationId?: string;
   title: string;
@@ -121,8 +119,8 @@ interface Props {
 export default function TicketChat({ ticketId, reservationId, title, isAdmin = false, onBack }: Props) {
   const { profile } = useAuthMobile();
   const c = useColors();
-  const [ticket, setTicket] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [ticket, setTicket] = useState<SupportTicket | null>(null);
+  const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -144,67 +142,61 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
     setLoading(true);
     setMessages([]);
 
-    let foundTicket: Conversation | null = null;
+    let found: SupportTicket | null = null;
 
     if (ticketId) {
       const { data } = await supabase
-        .from('conversations')
+        .from('support_tickets')
         .select('id, status, created_at, subject, user_id')
         .eq('id', ticketId)
         .maybeSingle();
-      foundTicket = data as Conversation | null;
-    } else if (reservationId) {
-      // Embed the reservationId in the subject so we can look it up deterministically.
-      // conversations table has no reservation_id column, so this is our 1:1 key.
+      found = data as SupportTicket | null;
+
+    } else if (reservationId && profile?.id) {
+      // 1:1 key: embed the reservationId in the subject field.
+      // support_tickets has no reservation_id column, so subject is used as a
+      // deterministic lookup key for the MyBookings → chat flow.
       const lookupSubject = `booking:${reservationId}`;
 
       const { data: existing } = await supabase
-        .from('conversations')
+        .from('support_tickets')
         .select('id, status, created_at, subject, user_id')
-        .eq('user_id', profile?.id)
+        .eq('user_id', profile.id)
         .eq('subject', lookupSubject)
         .maybeSingle();
 
       if (existing) {
-        foundTicket = existing as Conversation;
+        found = existing as SupportTicket;
       } else {
         const { data: created } = await supabase
-          .from('conversations')
-          .insert({ user_id: profile?.id, subject: lookupSubject, status: 'open' })
+          .from('support_tickets')
+          .insert({ user_id: profile.id, subject: lookupSubject })
           .select('id, status, created_at, subject, user_id')
           .single();
-        foundTicket = created as Conversation | null;
+        found = created as SupportTicket | null;
       }
     }
 
-    if (!foundTicket) {
+    if (!found) {
       if (isMounted.current) setLoading(false);
       return;
     }
 
-    if (isMounted.current) setTicket(foundTicket);
-    await fetchMessages(foundTicket.id);
-    subscribeToMessages(foundTicket.id);
+    if (isMounted.current) setTicket(found);
+    await fetchMessages(found.id);
+    subscribeToMessages(found.id);
   }
 
   async function fetchMessages(tId: string) {
     const { data, error } = await supabase
-      .from('messages')
-      .select('id, conversation_id, sender_id, content, created_at, users!messages_sender_id_fkey(full_name)')
-      .eq('conversation_id', tId)
+      .from('ticket_messages')
+      .select('id, ticket_id, sender_id, sender_role, message, created_at')
+      .eq('ticket_id', tId)
       .order('created_at', { ascending: true });
 
     if (!isMounted.current) return;
     if (!error) {
-      const mapped: Message[] = (data ?? []).map((row: any) => ({
-        id: row.id,
-        conversation_id: row.conversation_id,
-        sender_id: row.sender_id,
-        content: row.content,
-        created_at: row.created_at,
-        sender_name: row.users?.full_name ?? null,
-      }));
-      setMessages(mapped);
+      setMessages((data ?? []) as TicketMessage[]);
     }
     setLoading(false);
   }
@@ -212,22 +204,24 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
   function subscribeToMessages(tId: string) {
     channelRef.current?.unsubscribe();
 
-    // On INSERT, refetch so the sender name join is included.
     const channel = supabase
-      .channel(`conv-messages:${tId}`)
+      .channel(`ticket-msgs:${tId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${tId}`,
+          table: 'ticket_messages',
+          filter: `ticket_id=eq.${tId}`,
         },
-        () => {
-          if (isMounted.current) {
-            void fetchMessages(tId);
-            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
-          }
+        (payload) => {
+          if (!isMounted.current) return;
+          const msg = payload.new as TicketMessage;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
         },
       )
       .subscribe();
@@ -242,10 +236,11 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
     setSending(true);
     setInput('');
 
-    const { error } = await supabase.from('messages').insert({
-      conversation_id: ticket.id,
+    const { error } = await supabase.from('ticket_messages').insert({
+      ticket_id: ticket.id,
       sender_id: profile.id,
-      content,
+      sender_role: isAdmin ? 'admin' : 'user',
+      message: content,
     });
 
     if (error) setInput(content);
@@ -261,7 +256,7 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
         onPress: async () => {
           setResolving(true);
           const { error } = await supabase
-            .from('conversations')
+            .from('support_tickets')
             .update({ status: 'resolved' })
             .eq('id', ticket.id);
           if (!error && isMounted.current) {
@@ -273,10 +268,10 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
     ]);
   }
 
-  // ── Date-separated FlatList items ──────────────────────────────────────────
+  // ── Date-separated list items ──────────────────────────────────────────────
 
   interface ListItem {
-    message: Message;
+    message: TicketMessage;
     showDate: boolean;
     dateLabel: string;
   }
@@ -292,8 +287,8 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
     };
   });
 
-  const isClosed = ticket?.status === 'resolved' || ticket?.status === 'closed';
-  const canResolve = isAdmin && ticket && (ticket.status === 'open' || ticket.status === 'in_progress');
+  const isResolved = ticket?.status === 'resolved';
+  const canResolve = isAdmin && ticket?.status === 'open';
 
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -332,7 +327,7 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
           )}
         </View>
 
-        {/* Messages */}
+        {/* Messages area */}
         {loading ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator color={c.primary} />
@@ -369,10 +364,10 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
         {/* Input bar */}
         {!loading && (
           <View className="border-t border-border bg-background px-4 py-3">
-            {isClosed ? (
+            {isResolved ? (
               <View className="items-center rounded-xl bg-muted py-3">
                 <Text className="text-sm text-muted-foreground">
-                  This ticket is {ticket?.status}.
+                  This ticket has been resolved and is now read-only.
                 </Text>
               </View>
             ) : (
@@ -384,7 +379,6 @@ export default function TicketChat({ ticketId, reservationId, title, isAdmin = f
                   value={input}
                   onChangeText={setInput}
                   multiline
-                  onSubmitEditing={sendMessage}
                   blurOnSubmit={false}
                 />
                 <Pressable

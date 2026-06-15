@@ -168,7 +168,7 @@ export default function Profile({ onSupportPress }: Props) {
             <User size={18} color={c.primary} />
           </View>
           <View className="flex-1 min-w-0">
-            <Text className="text-xl font-bold text-foreground">My Profile</Text>
+            <Text className="text-2xl font-bold tracking-tight text-foreground">My Profile</Text>
             <Text className="mt-0.5 text-sm text-muted-foreground truncate">
               {profile?.email}
             </Text>

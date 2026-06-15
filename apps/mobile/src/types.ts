@@ -38,29 +38,29 @@ export interface BookedEvent {
   created_at: string;
 }
 
-// Real DB table: conversations (id, user_id, subject, status, created_at)
-export interface Conversation {
+// ── Support system ────────────────────────────────────────────────────────────
+// Maps exactly to the production DB tables defined in migration 0016.
+
+// DB table: support_tickets (id, user_id, subject, status, created_at)
+export interface SupportTicket {
   id: string;
   user_id: string;
   subject: string | null;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  status: 'open' | 'resolved';
   created_at: string;
   users?: { full_name: string | null; email: string };
 }
 
-// Backward-compat alias — existing imports of SupportTicket continue to work.
-export type SupportTicket = Conversation;
-
-// Real DB table: messages (id, conversation_id, sender_id, content, created_at)
-// sender_name is NOT stored in the DB; it is populated client-side via a users join.
-export interface Message {
+// DB table: ticket_messages (id, ticket_id, sender_id, sender_role, message, created_at)
+export interface TicketMessage {
   id: string;
-  conversation_id: string;
+  ticket_id: string;
   sender_id: string;
-  sender_name: string | null;
-  content: string;
+  sender_role: 'admin' | 'user';
+  message: string;
   created_at: string;
 }
 
-// Backward-compat alias
-export type TicketMessage = Message;
+// Backward-compat aliases — existing imports continue to work.
+export type Conversation = SupportTicket;
+export type Message = TicketMessage;

@@ -14,8 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, CalendarDays, Tag, Users } from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
+import { useColors } from '../colors';
 import type { Event, UserReservation } from '../types';
-import { colors } from '../colors';
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -35,6 +35,8 @@ interface Props {
 
 export default function EventDetails({ eventId, onBack }: Props) {
   const { profile } = useAuthMobile();
+  const c = useColors();
+
   const [event, setEvent] = useState<Event | null>(null);
   const [reservation, setReservation] = useState<UserReservation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,7 +84,6 @@ export default function EventDetails({ eventId, onBack }: Props) {
       setEvent(eventRes.data as Event);
       setReservation((reservationRes.data ?? null) as UserReservation | null);
 
-      // Record category interest for notification personalisation
       if (eventRes.data.category && userId) {
         supabase.from('user_interests').upsert(
           { user_id: userId, category: eventRes.data.category, updated_at: new Date().toISOString() },
@@ -174,8 +175,8 @@ export default function EventDetails({ eventId, onBack }: Props) {
   if (loading) {
     return (
       <SafeAreaView className="flex-1 bg-background">
-        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-gray-200 dark:active:bg-zinc-800">
-          <ArrowLeft size={28} color={colors.mutedForeground} />
+        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-muted">
+          <ArrowLeft size={28} color={c.mutedForeground} />
           <Text className="text-sm text-muted-foreground">Back</Text>
         </Pressable>
         <View className="gap-5 px-4 pt-2">
@@ -193,8 +194,8 @@ export default function EventDetails({ eventId, onBack }: Props) {
   if (error || !event) {
     return (
       <SafeAreaView className="flex-1 bg-background">
-        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-gray-200 dark:active:bg-zinc-800">
-          <ArrowLeft size={28} color={colors.mutedForeground} />
+        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-muted">
+          <ArrowLeft size={28} color={c.mutedForeground} />
           <Text className="text-sm text-muted-foreground">Back</Text>
         </Pressable>
         <View className="flex-1 items-center justify-center px-6">
@@ -214,8 +215,8 @@ export default function EventDetails({ eventId, onBack }: Props) {
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Back navigation */}
-        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-gray-200 dark:active:bg-zinc-800">
-          <ArrowLeft size={28} color={colors.mutedForeground} />
+        <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-muted">
+          <ArrowLeft size={28} color={c.mutedForeground} />
           <Text className="text-sm text-muted-foreground">Events</Text>
         </Pressable>
 
@@ -228,7 +229,7 @@ export default function EventDetails({ eventId, onBack }: Props) {
           />
         ) : (
           <View className="mx-4 h-64 items-center justify-center rounded-2xl bg-muted">
-            <CalendarDays size={56} color={colors.mutedForeground} strokeWidth={1} />
+            <CalendarDays size={56} color={c.mutedForeground} strokeWidth={1} />
           </View>
         )}
 
@@ -247,33 +248,32 @@ export default function EventDetails({ eventId, onBack }: Props) {
             )}
             {event.category && (
               <View className="flex-row items-center gap-1">
-                <Tag size={12} color={colors.mutedForeground} />
+                <Tag size={12} color={c.mutedForeground} />
                 <Text className="text-xs text-muted-foreground">{event.category}</Text>
               </View>
             )}
           </View>
 
           {/* Title */}
-          <Text className="text-2xl font-bold text-foreground">{event.title}</Text>
+          <Text className="text-2xl font-bold tracking-tight text-foreground">{event.title}</Text>
 
           {/* Date */}
           <View className="flex-row items-center gap-2">
-            <CalendarDays size={15} color={colors.mutedForeground} />
-            <Text className="text-sm text-muted-foreground">{formatDate(event.event_date)}</Text>
+            <CalendarDays size={15} color={c.mutedForeground} />
+            <Text className="text-sm leading-relaxed text-muted-foreground">{formatDate(event.event_date)}</Text>
           </View>
 
-          {/* Capacity */}
-          <View className="rounded-xl border border-border bg-card p-4 gap-3">
+          {/* Capacity card */}
+          <View className="rounded-2xl border border-border bg-card p-4 gap-3 shadow-sm">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
-                <Users size={15} color={colors.mutedForeground} />
+                <Users size={15} color={c.mutedForeground} />
                 <Text className="text-sm font-medium text-foreground">Capacity</Text>
               </View>
               <Text className="text-sm text-muted-foreground">
                 {event.booked_count} / {event.capacity}
               </Text>
             </View>
-            {/* Progress bar */}
             <View className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <View
                 className={`h-full rounded-full ${fillPct >= 90 ? 'bg-destructive' : fillPct >= 70 ? 'bg-yellow-500' : 'bg-primary'}`}
@@ -299,7 +299,7 @@ export default function EventDetails({ eventId, onBack }: Props) {
 
           {/* Booking widget */}
           {!isPast && event.status !== 'cancelled' && isApproved && (
-            <View className="rounded-2xl border border-border bg-card p-5 gap-4">
+            <View className="rounded-2xl border border-border bg-card p-5 gap-4 shadow-sm">
               {isConfirmed && (
                 <View className="rounded-xl bg-green-500/10 p-3">
                   <Text className="text-center text-sm font-semibold text-green-600">
@@ -315,7 +315,7 @@ export default function EventDetails({ eventId, onBack }: Props) {
                     <View className="flex-row items-center gap-3">
                       <Pressable
                         onPress={() => setSelectedSeats((s) => Math.max(1, s - 1))}
-                        className="h-8 w-8 items-center justify-center rounded-lg border border-border bg-background"
+                        className="h-8 w-8 items-center justify-center rounded-lg border border-border bg-background active:bg-muted"
                       >
                         <Text className="text-lg font-semibold text-foreground">−</Text>
                       </Pressable>
@@ -338,7 +338,7 @@ export default function EventDetails({ eventId, onBack }: Props) {
                           const cap = canUpdate ? maxSeatsForUpdate : maxSeats;
                           setSelectedSeats((s) => Math.min(cap, s + 1));
                         }}
-                        className="h-8 w-8 items-center justify-center rounded-lg border border-border bg-background"
+                        className="h-8 w-8 items-center justify-center rounded-lg border border-border bg-background active:bg-muted"
                       >
                         <Text className="text-lg font-semibold text-foreground">+</Text>
                       </Pressable>
@@ -349,9 +349,9 @@ export default function EventDetails({ eventId, onBack }: Props) {
                     <Pressable
                       onPress={handleBook}
                       disabled={booking || isSoldOut}
-                      className="w-full items-center rounded-xl bg-primary py-3 disabled:opacity-50"
+                      className="w-full items-center rounded-xl bg-primary py-3 active:opacity-80 disabled:opacity-50"
                     >
-                      {booking ? <ActivityIndicator color={colors.primaryForeground} size="small" /> : (
+                      {booking ? <ActivityIndicator color={c.primaryForeground} size="small" /> : (
                         <Text className="text-sm font-semibold text-primary-foreground">Confirm Booking</Text>
                       )}
                     </Pressable>
@@ -361,9 +361,9 @@ export default function EventDetails({ eventId, onBack }: Props) {
                     <Pressable
                       onPress={handleUpdate}
                       disabled={booking || selectedSeats === reservation?.tickets_requested}
-                      className="w-full items-center rounded-xl bg-primary py-3 disabled:opacity-50"
+                      className="w-full items-center rounded-xl bg-primary py-3 active:opacity-80 disabled:opacity-50"
                     >
-                      {booking ? <ActivityIndicator color={colors.primaryForeground} size="small" /> : (
+                      {booking ? <ActivityIndicator color={c.primaryForeground} size="small" /> : (
                         <Text className="text-sm font-semibold text-primary-foreground">Update Seats</Text>
                       )}
                     </Pressable>
@@ -380,8 +380,8 @@ export default function EventDetails({ eventId, onBack }: Props) {
           )}
 
           {!isApproved && !isPast && (
-            <View className="rounded-xl border border-dashed border-border p-4">
-              <Text className="text-center text-sm text-muted-foreground">
+            <View className="rounded-2xl border border-dashed border-border bg-card/50 p-4">
+              <Text className="text-center text-sm leading-relaxed text-muted-foreground">
                 Your account is pending approval. Booking will be available once approved.
               </Text>
             </View>
@@ -392,25 +392,25 @@ export default function EventDetails({ eventId, onBack }: Props) {
       {/* Cancel confirmation modal */}
       <Modal visible={showCancelModal} transparent animationType="fade">
         <View className="flex-1 items-center justify-center bg-foreground/50 px-6">
-          <View className="w-full max-w-sm rounded-2xl bg-card p-6 gap-4">
-            <Text className="text-lg font-bold text-foreground">Cancel Reservation</Text>
-            <Text className="text-sm text-muted-foreground">
-              Are you sure you want to cancel your reservation for "{event.title}"?
+          <View className="w-full max-w-sm rounded-2xl bg-card p-6 gap-4 shadow-xl">
+            <Text className="text-lg font-bold tracking-tight text-foreground">Cancel Reservation</Text>
+            <Text className="text-sm leading-relaxed text-muted-foreground">
+              Are you sure you want to cancel your reservation for &quot;{event.title}&quot;?
             </Text>
             <View className="flex-row gap-3">
               <Pressable
                 onPress={() => setShowCancelModal(false)}
-                className="flex-1 items-center rounded-xl border border-border py-2.5"
+                className="flex-1 items-center rounded-xl bg-muted py-2.5 active:opacity-70"
               >
                 <Text className="text-sm font-medium text-foreground">Keep It</Text>
               </Pressable>
               <Pressable
                 onPress={handleCancel}
                 disabled={cancelling}
-                className="flex-1 items-center rounded-xl bg-destructive py-2.5 disabled:opacity-50"
+                className="flex-1 items-center rounded-xl bg-destructive py-2.5 active:opacity-80 disabled:opacity-50"
               >
-                {cancelling ? <ActivityIndicator color={colors.primaryForeground} size="small" /> : (
-                  <Text className="text-sm font-semibold text-primary-foreground">Yes, Cancel</Text>
+                {cancelling ? <ActivityIndicator color={c.primaryForeground} size="small" /> : (
+                  <Text className="text-sm font-semibold text-destructive-foreground">Yes, Cancel</Text>
                 )}
               </Pressable>
             </View>

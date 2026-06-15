@@ -6,9 +6,12 @@
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@layk/core": "*",
+    "@react-native-community/datetimepicker": "8.4.4",
     "expo": "~54.0.0",
     "expo-device": "~8.0.10",
+    "expo-image-picker": "~17.0.11",
     "expo-linking": "~8.0.12",
+    "expo-navigation-bar": "~5.0.10",
     "expo-notifications": "~0.32.17",
     "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",

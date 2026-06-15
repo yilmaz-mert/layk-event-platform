@@ -30,7 +30,10 @@
               "scheme": "laykapp"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -43,7 +46,8 @@
         {
           "faceIDPermission": "Allow L'Ayk to access Face ID for secure session storage."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
