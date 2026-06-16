@@ -9,6 +9,7 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
+import type { PushDeepLink } from '../lib/notifications';
 import { useColors } from '../colors';
 import Login from '../screens/Login';
 import AdminDashboard from '../screens/AdminDashboard';
@@ -114,7 +115,12 @@ function PendingApproval({ onSignOut }: { onSignOut: () => void }) {
 
 // ── Main Navigator ─────────────────────────────────────────────────────────────
 
-export default function Navigator() {
+interface NavigatorProps {
+  deepLink?: PushDeepLink | null;
+  onDeepLinkConsumed?: () => void;
+}
+
+export default function Navigator({ deepLink, onDeepLinkConsumed }: NavigatorProps) {
   const { session, profile, loading } = useAuthMobile();
   const c = useColors();
   const [screen, setScreen] = useState<Screen>({ id: 'feed' });
@@ -129,6 +135,20 @@ export default function Navigator() {
     });
     return () => sub.remove();
   }, [screen.id, activeTab]);
+
+  // Route a tapped push notification once the user is past the loading/login/
+  // approval gates (admins have no event-details/ticket-chat screens to land on).
+  useEffect(() => {
+    if (!deepLink || !session || !profile) return;
+    if (profile.role === 'admin' || profile.approval_status !== 'approved') return;
+
+    if (deepLink.screen === 'event-details') {
+      setScreen({ id: 'event-details', eventId: deepLink.eventId });
+    } else if (deepLink.screen === 'ticket-chat') {
+      setScreen({ id: 'ticket-chat', ticketId: deepLink.ticketId, title: 'Support' });
+    }
+    onDeepLinkConsumed?.();
+  }, [deepLink, session, profile, onDeepLinkConsumed]);
 
   // ── Auth loading ──────────────────────────────────────────────────────────
 

@@ -66,10 +66,15 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       return null;
     }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      // Replace with your actual Expo project ID from app.json / EAS
-      projectId: undefined,
-    });
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.warn(
+        '[Push] No EAS projectId configured (app.json extra.eas.projectId) — ' +
+          'getExpoPushTokenAsync will likely fail. Run `eas init` to link a project.',
+      );
+    }
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     console.log('[Push] Expo Push Token:', tokenData.data);
     return tokenData.data;
   } catch (err) {
@@ -120,4 +125,61 @@ export async function initPushNotifications(userId: string): Promise<void> {
   } catch (err) {
     console.warn('[Push] initPushNotifications failed:', err);
   }
+}
+
+// ── Tap-to-navigate ──────────────────────────────────────────────────────────
+//
+// The `notifications` table's DB triggers already stamp a web-style `link_url`
+// on every row (e.g. "/events/<id>" or "/profile?tab=support&ticketId=<uuid>").
+// A future Edge Function can forward that same string as the push payload's
+// `data.link_url` with zero extra mapping — this just parses it back into a
+// screen the mobile Navigator understands.
+export type PushDeepLink =
+  | { screen: 'event-details'; eventId: string }
+  | { screen: 'ticket-chat'; ticketId: string };
+
+export function parseLinkUrl(linkUrl: string | null | undefined): PushDeepLink | null {
+  if (!linkUrl) return null;
+
+  const eventMatch = linkUrl.match(/^\/events\/([^/?]+)/);
+  if (eventMatch) return { screen: 'event-details', eventId: eventMatch[1] };
+
+  const ticketMatch = linkUrl.match(/ticketId=([^&]+)/);
+  if (ticketMatch) return { screen: 'ticket-chat', ticketId: ticketMatch[1] };
+
+  return null;
+}
+
+function extractLinkUrl(content: { data: { [key: string]: unknown } }): string | undefined {
+  const linkUrl = content.data.link_url;
+  return typeof linkUrl === 'string' ? linkUrl : undefined;
+}
+
+// Call once near the app root (independent of login state). Handles three
+// cases: tap while app is foregrounded/backgrounded (response listener), tap
+// that cold-starts the app (getLastNotificationResponseAsync), and a plain
+// foreground receipt (logged only — presentation is handled by
+// setNotificationHandler in initPushNotifications).
+export function addNotificationListeners(onDeepLink: (link: PushDeepLink) => void): () => void {
+  if (isExpoGo()) return () => {};
+
+  const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+    console.log('[Push] Received in foreground:', notification.request.content.title);
+  });
+
+  const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+    const link = parseLinkUrl(extractLinkUrl(response.notification.request.content));
+    if (link) onDeepLink(link);
+  });
+
+  Notifications.getLastNotificationResponseAsync().then((response) => {
+    if (!response) return;
+    const link = parseLinkUrl(extractLinkUrl(response.notification.request.content));
+    if (link) onDeepLink(link);
+  });
+
+  return () => {
+    receivedSub.remove();
+    responseSub.remove();
+  };
 }

@@ -1,6 +1,6 @@
 import './global.css';
 
-import { memo, useEffect, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 import { MobileAuthProvider, useAuthMobile } from './src/hooks/useAuthMobile';
 import { useMobileRealtimeSync } from './src/hooks/useMobileRealtimeSync';
-import { initPushNotifications } from './src/lib/notifications';
+import { addNotificationListeners, initPushNotifications, type PushDeepLink } from './src/lib/notifications';
 import Navigator from './src/navigation/Navigator';
 
 // ThemeShell subscribes to colorScheme and owns the root dark-class wrapper.
@@ -35,6 +35,7 @@ function ThemeShell({ children }: { children: ReactNode }) {
 // actually changes, not when ThemeShell re-renders for a color-scheme change.
 const AppContent = memo(function AppContent() {
   const { profile } = useAuthMobile();
+  const [deepLink, setDeepLink] = useState<PushDeepLink | null>(null);
 
   useMobileRealtimeSync();
 
@@ -44,7 +45,14 @@ const AppContent = memo(function AppContent() {
     }
   }, [profile?.id]);
 
-  return <Navigator />;
+  // Independent of login state: a tap can cold-start the app before profile
+  // has loaded, so the listener stores the link and Navigator consumes it
+  // once the user is routed past the loading/login gates.
+  useEffect(() => {
+    return addNotificationListeners(setDeepLink);
+  }, []);
+
+  return <Navigator deepLink={deepLink} onDeepLinkConsumed={() => setDeepLink(null)} />;
 });
 
 export default function App() {
