@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, LifeBuoy, MessageCircle, Plus, X } from 'lucide-react-native';
+import { ArrowLeft, LifeBuoy, MessageCircle, MessageSquare, Plus, X } from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { useAuthMobile } from '../hooks/useAuthMobile';
 import { useColors } from '../colors';
@@ -45,27 +45,33 @@ function TicketRow({ ticket, selected, onPress }: {
   selected: boolean;
   onPress: () => void;
 }) {
+  const c = useColors();
   const isOpen = ticket.status === 'open';
   return (
     <Pressable
       onPress={onPress}
-      className={`mb-2 rounded-2xl border p-4 gap-2 active:opacity-70 ${
+      className={`mb-2 flex-row items-center gap-3 rounded-2xl border p-4 active:opacity-70 ${
         selected ? 'border-primary bg-primary/5' : 'border-border bg-card'
       }`}
     >
-      <View className="flex-row items-start justify-between gap-2">
-        <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={2}>
-          {ticket.subject ?? 'Support request'}
-        </Text>
-        <View className={`rounded-full px-2 py-0.5 ${isOpen ? 'bg-green-500/10' : 'bg-muted'}`}>
-          <Text className={`text-[10px] font-semibold ${isOpen ? 'text-green-600' : 'text-muted-foreground'}`}>
-            {isOpen ? 'Open' : 'Resolved'}
-          </Text>
-        </View>
+      <View className={`h-10 w-10 shrink-0 items-center justify-center rounded-full ${isOpen ? 'bg-primary/10' : 'bg-muted'}`}>
+        <MessageSquare size={18} color={isOpen ? c.primary : c.mutedForeground} />
       </View>
-      <Text className="text-xs text-muted-foreground">
-        {formatDate(ticket.created_at)}
-      </Text>
+      <View className="flex-1 min-w-0 gap-1">
+        <View className="flex-row items-start justify-between gap-2">
+          <Text className="flex-1 text-sm font-semibold text-foreground" numberOfLines={2}>
+            {ticket.subject ?? 'Support request'}
+          </Text>
+          <View className={`rounded-full px-2 py-0.5 ${isOpen ? 'bg-green-500/10' : 'bg-muted'}`}>
+            <Text className={`text-[10px] font-semibold ${isOpen ? 'text-green-600' : 'text-muted-foreground'}`}>
+              {isOpen ? 'Open' : 'Resolved'}
+            </Text>
+          </View>
+        </View>
+        <Text className="text-xs text-muted-foreground">
+          {formatDate(ticket.created_at)}
+        </Text>
+      </View>
     </Pressable>
   );
 }

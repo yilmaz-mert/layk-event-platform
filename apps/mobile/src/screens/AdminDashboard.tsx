@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
-  KeyboardAvoidingView,
+  InteractionManager,
   Modal,
   Platform,
   Pressable,
@@ -15,7 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Calendar,
   CalendarDays,
@@ -317,10 +316,14 @@ function UserDetailsModal({
   onAssignReservation: () => void;
 }) {
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const initials = getInitials(user.full_name, user.email);
   const [bookings, setBookings] = useState<AdminUserBooking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [showRoleConfirm, setShowRoleConfirm] = useState(false);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+  const [editCount, setEditCount] = useState('');
 
   const roleBusy = updatingRoleId === user.id;
   const statusBusy = updatingId === user.id;
@@ -377,16 +380,36 @@ function UserDetailsModal({
     ]);
   }
 
+  async function handleUpdateBookingCount(reservationId: string) {
+    const parsed = parseInt(editCount, 10);
+    if (!parsed || parsed < 1) {
+      Alert.alert('Error', 'Please enter a valid ticket count.');
+      return;
+    }
+    const { error } = await supabase
+      .from('reservations')
+      .update({ tickets_requested: parsed })
+      .eq('id', reservationId);
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.reservation_id === reservationId ? { ...b, tickets_requested: parsed } : b,
+        ),
+      );
+      setEditingBookingId(null);
+      Alert.alert('Success', 'Ticket count updated.');
+    }
+  }
+
   return (
-    <Modal animationType="slide" transparent visible onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/50">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ width: '100%', maxHeight: '92%' }}
-        >
+    <>
+    <Modal animationType="slide" transparent visible statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+      <View className="flex-1 bg-black/50" style={{ paddingTop: insets.top + 24, justifyContent: 'flex-end' }}>
           <View
-            className="rounded-t-3xl border-t border-border bg-card w-full"
-            style={{ maxHeight: '100%' }}
+            className="rounded-t-3xl bg-card w-full"
+            style={{ maxHeight: '100%', paddingBottom: insets.bottom }}
           >
             {/* Header */}
             <View className="flex-row items-center justify-between border-b border-border px-5 py-4">
@@ -399,7 +422,8 @@ function UserDetailsModal({
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 80, gap: 20 }}
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: editingBookingId ? 280 : 120, gap: 20 }}
             >
               {/* Profile card */}
               <View className="rounded-2xl border border-border bg-background p-4 gap-4">
@@ -443,19 +467,7 @@ function UserDetailsModal({
                       </View>
                       {user.role === 'user' ? (
                         <Pressable
-                          onPress={() =>
-                            Alert.alert(
-                              'Grant Admin Privileges',
-                              `Make ${user.full_name ?? user.email} an admin? They will gain full access to the admin portal.`,
-                              [
-                                { text: 'Cancel', style: 'cancel' },
-                                {
-                                  text: 'Make Admin',
-                                  onPress: () => onRoleChange(user.id, 'admin'),
-                                },
-                              ],
-                            )
-                          }
+                          onPress={() => setShowRoleConfirm(true)}
                           disabled={roleBusy}
                           className="rounded-lg bg-primary px-3 py-1.5 active:opacity-80 disabled:opacity-50"
                         >
@@ -467,20 +479,7 @@ function UserDetailsModal({
                         </Pressable>
                       ) : (
                         <Pressable
-                          onPress={() =>
-                            Alert.alert(
-                              'Remove Admin Privileges',
-                              `Remove admin access from ${user.full_name ?? user.email}?`,
-                              [
-                                { text: 'Cancel', style: 'cancel' },
-                                {
-                                  text: 'Remove',
-                                  style: 'destructive',
-                                  onPress: () => onRoleChange(user.id, 'user'),
-                                },
-                              ],
-                            )
-                          }
+                          onPress={() => setShowRoleConfirm(true)}
                           disabled={roleBusy}
                           className="rounded-lg bg-destructive/10 px-3 py-1.5 active:opacity-80 disabled:opacity-50"
                         >
@@ -606,21 +605,54 @@ function UserDetailsModal({
                           </View>
                         ) : null}
                         <View className="flex-row items-center justify-between">
-                          <Text className="text-xs text-muted-foreground">
-                            {booking.tickets_requested} ticket{booking.tickets_requested !== 1 ? 's' : ''}
-                          </Text>
+                          {editingBookingId === booking.reservation_id ? (
+                            <TextInput
+                              value={editCount}
+                              onChangeText={setEditCount}
+                              keyboardType="number-pad"
+                              autoFocus
+                              selectTextOnFocus
+                              className="min-w-[80px] rounded-lg border border-input bg-card px-3 py-2 text-center text-base text-foreground"
+                            />
+                          ) : (
+                            <Text className="text-xs text-muted-foreground">
+                              {booking.tickets_requested} ticket{booking.tickets_requested !== 1 ? 's' : ''}
+                            </Text>
+                          )}
                           {booking.status === 'confirmed' && (
-                            <Pressable
-                              onPress={() => handleCancelBooking(booking.reservation_id)}
-                              disabled={cancellingId === booking.reservation_id}
-                              className="rounded-lg bg-destructive/10 px-2.5 py-1 disabled:opacity-50 active:opacity-70"
-                            >
-                              {cancellingId === booking.reservation_id ? (
-                                <ActivityIndicator size="small" color="#e44848" />
+                            <View className="flex-row items-center gap-2">
+                              {editingBookingId === booking.reservation_id ? (
+                                <Pressable
+                                  onPress={() => handleUpdateBookingCount(booking.reservation_id)}
+                                  className="rounded-lg bg-primary px-2.5 py-1 active:opacity-70"
+                                >
+                                  <Text className="text-[11px] font-semibold text-primary-foreground">Save</Text>
+                                </Pressable>
                               ) : (
-                                <Text className="text-[11px] font-semibold text-destructive">Cancel</Text>
+                                <>
+                                  <Pressable
+                                    onPress={() => {
+                                      setEditingBookingId(booking.reservation_id);
+                                      setEditCount(String(booking.tickets_requested));
+                                    }}
+                                    className="rounded-lg bg-muted px-2.5 py-1 active:opacity-70"
+                                  >
+                                    <Text className="text-[11px] font-semibold text-foreground">Edit</Text>
+                                  </Pressable>
+                                  <Pressable
+                                    onPress={() => handleCancelBooking(booking.reservation_id)}
+                                    disabled={cancellingId === booking.reservation_id}
+                                    className="rounded-lg bg-destructive/10 px-2.5 py-1 disabled:opacity-50 active:opacity-70"
+                                  >
+                                    {cancellingId === booking.reservation_id ? (
+                                      <ActivityIndicator size="small" color="#e44848" />
+                                    ) : (
+                                      <Text className="text-[11px] font-semibold text-destructive">Cancel</Text>
+                                    )}
+                                  </Pressable>
+                                </>
                               )}
-                            </Pressable>
+                            </View>
                           )}
                         </View>
                       </View>
@@ -630,9 +662,45 @@ function UserDetailsModal({
               </View>
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
       </View>
     </Modal>
+
+    <Modal transparent visible={showRoleConfirm} animationType="fade" statusBarTranslucent onRequestClose={() => setShowRoleConfirm(false)}>
+      <View className="flex-1 items-center justify-center bg-black/60 px-6">
+        <View className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 gap-4">
+          <Text className="text-base font-semibold text-foreground">
+            {user.role === 'user' ? 'Grant Admin Privileges' : 'Remove Admin Privileges'}
+          </Text>
+          <Text className="text-sm leading-relaxed text-muted-foreground">
+            {user.role === 'user'
+              ? `Make ${user.full_name ?? user.email} an admin? They will gain full access to the admin portal.`
+              : `Remove admin access from ${user.full_name ?? user.email}?`}
+          </Text>
+          <View className="flex-row gap-3 pt-1">
+            <Pressable
+              onPress={() => setShowRoleConfirm(false)}
+              className="flex-1 items-center rounded-xl bg-muted py-2.5 active:opacity-70"
+            >
+              <Text className="text-sm font-medium text-foreground">Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setShowRoleConfirm(false);
+                onRoleChange(user.id, user.role === 'user' ? 'admin' : 'user');
+              }}
+              className={`flex-1 items-center rounded-xl py-2.5 active:opacity-80 ${
+                user.role === 'user' ? 'bg-primary' : 'bg-destructive'
+              }`}
+            >
+              <Text className={`text-sm font-semibold ${user.role === 'user' ? 'text-primary-foreground' : 'text-destructive-foreground'}`}>
+                {user.role === 'user' ? 'Make Admin' : 'Remove'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -650,6 +718,7 @@ function AssignReservationModal({
   onAssigned: () => void;
 }) {
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const [selectedEvent, setSelectedEvent] = useState<AdminEvent | null>(null);
   const [ticketCount, setTicketCount] = useState('1');
   const [submitting, setSubmitting] = useState(false);
@@ -699,13 +768,12 @@ function AssignReservationModal({
   }
 
   return (
-    <Modal animationType="slide" transparent visible onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/60">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ width: '100%' }}
-        >
-          <View className="rounded-t-3xl border-t border-border bg-card w-full">
+    <Modal animationType="slide" transparent visible statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+      <View className="flex-1 bg-black/60" style={{ paddingTop: insets.top + 24, justifyContent: 'flex-end' }}>
+          <View
+            className="rounded-t-3xl bg-card w-full"
+            style={{ maxHeight: '100%', paddingBottom: insets.bottom }}
+          >
             <View className="flex-row items-center justify-between border-b border-border px-5 py-4">
               <Text className="text-base font-semibold text-foreground">Assign Reservation</Text>
               <Pressable onPress={onClose} className="rounded-xl p-2 active:bg-muted">
@@ -715,7 +783,8 @@ function AssignReservationModal({
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 80, gap: 16 }}
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120, gap: 16 }}
             >
               <Text className="text-xs text-muted-foreground">
                 Assigning to:{' '}
@@ -760,7 +829,7 @@ function AssignReservationModal({
                           key={event.id}
                           onPress={() => setSelectedEvent(event)}
                           className={`px-4 py-3 active:bg-muted ${
-                            i < Math.min(filtered.length, 8) - 1 ? 'border-b border-border/50' : ''
+                            i < Math.min(filtered.length, 8) - 1 ? 'border-b border-border' : ''
                           }`}
                         >
                           <Text className="text-sm font-medium text-foreground">{event.title}</Text>
@@ -800,7 +869,6 @@ function AssignReservationModal({
               </Pressable>
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -856,13 +924,16 @@ function UsersTab({
       <FlatList
         data={loading ? [] : filtered}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={5}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
         ListHeaderComponent={
-          <View>
-            <View className="flex-row items-center gap-2 mb-4 mt-2 rounded-xl border border-input bg-card px-3 py-2">
-              <Search size={15} color={c.mutedForeground} />
+          <View className="mb-4 gap-3">
+            <View className="h-11 flex-row items-center gap-2 rounded-xl border border-input bg-card px-3">
+              <Search size={16} color={c.mutedForeground} />
               <TextInput
                 value={searchQuery}
                 onChangeText={onSearchChange}
@@ -872,7 +943,7 @@ function UsersTab({
               />
             </View>
             {!loading && (
-              <Text className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Text className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {searchQuery
                   ? `${filtered.length} of ${users.length} members`
                   : `${users.length} members${pendingCount > 0 ? ` · ${pendingCount} pending` : ''}`}
@@ -961,6 +1032,9 @@ function EventModal({
   onSaved: () => void;
 }) {
   const c = useColors();
+  const insets = useSafeAreaInsets();
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const isEditing = editEvent !== null;
 
   const [form, setForm] = useState<EventFormState>(() =>
@@ -981,28 +1055,19 @@ function EventModal({
   const [uploading, setUploading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+
+  const STATUS_OPTIONS: { label: string; value: AdminEvent['status'] }[] = [
+    { label: 'Active', value: 'active' },
+    { label: 'Completed', value: 'completed' },
+    { label: 'Cancelled', value: 'cancelled' },
+  ];
 
   function getPickerDate(): Date {
     if (!form.event_date.trim()) return new Date();
     const normalized = form.event_date.trim().replace(' ', 'T');
     const d = new Date(normalized);
     return isNaN(d.getTime()) ? new Date() : d;
-  }
-
-  function openStatusPicker() {
-    const labels = ['Active', 'Completed', 'Cancelled'] as const;
-    const values: AdminEvent['status'][] = ['active', 'completed', 'cancelled'];
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: [...labels, 'Cancel'], cancelButtonIndex: 3, destructiveButtonIndex: 2 },
-        (idx) => { if (idx < 3) setSelectedStatus(values[idx]); },
-      );
-    } else {
-      Alert.alert('Event Status', 'Select a new status', [
-        ...labels.map((label, i) => ({ text: label, onPress: () => setSelectedStatus(values[i]) })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ]);
-    }
   }
 
   async function handlePickImage() {
@@ -1076,13 +1141,12 @@ function EventModal({
   }
 
   return (
-    <Modal animationType="slide" transparent visible onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/50">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1"
-        >
-          <View className="rounded-t-3xl border-t border-border bg-card w-full flex-1">
+    <Modal animationType="slide" transparent visible statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+      <View className="flex-1 bg-black/50" style={{ paddingTop: insets.top + 24, justifyContent: 'flex-end' }}>
+          <View
+            className="rounded-t-3xl bg-card w-full flex-1"
+            style={{ maxHeight: '100%', paddingBottom: insets.bottom }}
+          >
             <View className="flex-row items-center justify-between border-b border-border px-5 py-4">
               <Text className="text-base font-semibold text-foreground">
                 {isEditing ? 'Edit Event' : 'Create New Event'}
@@ -1095,7 +1159,8 @@ function EventModal({
             <ScrollView
               className="flex-1"
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16, gap: 14, paddingBottom: 40 }}
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16, gap: 14, paddingBottom: 120 }}
               showsVerticalScrollIndicator={false}
             >
               {/* Title */}
@@ -1145,31 +1210,6 @@ function EventModal({
                   </Text>
                   <CalendarDays size={16} color={c.mutedForeground} />
                 </Pressable>
-                {showDatePicker && (
-                  <View>
-                    {Platform.OS === 'ios' && (
-                      <View className="flex-row justify-end pb-1">
-                        <Pressable onPress={() => setShowDatePicker(false)}>
-                          <Text className="text-sm font-semibold text-primary">Done</Text>
-                        </Pressable>
-                      </View>
-                    )}
-                    <DateTimePicker
-                      value={getPickerDate()}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(event, picked) => {
-                        if (Platform.OS === 'android') setShowDatePicker(false);
-                        if (picked && event.type !== 'dismissed') {
-                          const prev = getPickerDate();
-                          const merged = new Date(picked);
-                          merged.setHours(prev.getHours(), prev.getMinutes(), 0, 0);
-                          set('event_date', toLocalInput(merged.toISOString()));
-                        }
-                      }}
-                    />
-                  </View>
-                )}
               </View>
 
               {/* Time */}
@@ -1188,28 +1228,6 @@ function EventModal({
                   </Text>
                   <Clock size={16} color={c.mutedForeground} />
                 </Pressable>
-                {showTimePicker && (
-                  <View>
-                    {Platform.OS === 'ios' && (
-                      <View className="flex-row justify-end pb-1">
-                        <Pressable onPress={() => setShowTimePicker(false)}>
-                          <Text className="text-sm font-semibold text-primary">Done</Text>
-                        </Pressable>
-                      </View>
-                    )}
-                    <DateTimePicker
-                      value={getPickerDate()}
-                      mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(event, picked) => {
-                        if (Platform.OS === 'android') setShowTimePicker(false);
-                        if (picked && event.type !== 'dismissed') {
-                          set('event_date', toLocalInput(picked.toISOString()));
-                        }
-                      }}
-                    />
-                  </View>
-                )}
               </View>
 
               {/* Capacity + Max Tickets */}
@@ -1302,14 +1320,34 @@ function EventModal({
                   <Text className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Event Status
                   </Text>
-                  <Pressable
-                    onPress={openStatusPicker}
-                    disabled={submitting}
-                    className="flex-row items-center justify-between rounded-xl border border-input bg-background px-4 py-3 disabled:opacity-50 active:opacity-70"
-                  >
-                    <Text className="text-sm text-foreground capitalize">{selectedStatus}</Text>
-                    <ChevronDown size={16} color={c.mutedForeground} />
-                  </Pressable>
+                  <View className="relative z-50">
+                    <Pressable
+                      onPress={() => setShowStatusDropdown((v) => !v)}
+                      disabled={submitting}
+                      className="flex-row items-center justify-between rounded-xl border border-input bg-background px-4 py-3 disabled:opacity-50 active:opacity-70"
+                    >
+                      <Text className="text-sm text-foreground capitalize">{selectedStatus}</Text>
+                      <ChevronDown size={16} color={c.mutedForeground} />
+                    </Pressable>
+
+                    {showStatusDropdown && (
+                      <View className="absolute left-0 right-0 bottom-full mb-2 z-50 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+                        {STATUS_OPTIONS.map(({ label, value }, i) => (
+                          <Pressable
+                            key={value}
+                            onPress={() => { setSelectedStatus(value); setShowStatusDropdown(false); }}
+                            className={`px-4 py-3 active:bg-muted ${
+                              i < STATUS_OPTIONS.length - 1 ? 'border-b border-border' : ''
+                            } ${selectedStatus === value ? 'bg-primary/5' : ''}`}
+                          >
+                            <Text className={`text-sm ${selectedStatus === value ? 'font-semibold text-primary' : 'text-foreground'}`}>
+                              {label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                  </View>
                 </View>
               )}
 
@@ -1336,8 +1374,60 @@ function EventModal({
                 </Pressable>
               </View>
             </ScrollView>
+
+            {showDatePicker && (
+              <View className="px-5">
+                {Platform.OS === 'ios' && (
+                  <View className="flex-row justify-end pb-1">
+                    <Pressable onPress={() => setShowDatePicker(false)}>
+                      <Text className="text-sm font-semibold text-primary">Done</Text>
+                    </Pressable>
+                  </View>
+                )}
+                <DateTimePicker
+                  value={getPickerDate()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                  textColor={isDark ? '#FFFFFF' : '#000000'}
+                  onChange={(event, picked) => {
+                    if (Platform.OS === 'android') setShowDatePicker(false);
+                    if (picked && event.type !== 'dismissed') {
+                      const prev = getPickerDate();
+                      const merged = new Date(picked);
+                      merged.setHours(prev.getHours(), prev.getMinutes(), 0, 0);
+                      set('event_date', toLocalInput(merged.toISOString()));
+                    }
+                  }}
+                />
+              </View>
+            )}
+
+            {showTimePicker && (
+              <View className="px-5">
+                {Platform.OS === 'ios' && (
+                  <View className="flex-row justify-end pb-1">
+                    <Pressable onPress={() => setShowTimePicker(false)}>
+                      <Text className="text-sm font-semibold text-primary">Done</Text>
+                    </Pressable>
+                  </View>
+                )}
+                <DateTimePicker
+                  value={getPickerDate()}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                  textColor={isDark ? '#FFFFFF' : '#000000'}
+                  onChange={(event, picked) => {
+                    if (Platform.OS === 'android') setShowTimePicker(false);
+                    if (picked && event.type !== 'dismissed') {
+                      set('event_date', toLocalInput(picked.toISOString()));
+                    }
+                  }}
+                />
+              </View>
+            )}
           </View>
-        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -1355,6 +1445,7 @@ function AdminEventDetailsModal({
   onEdit: () => void;
 }) {
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const [attendees, setAttendees] = useState<AdminEventAttendee[]>([]);
   const [loadingAttendees, setLoadingAttendees] = useState(true);
 
@@ -1393,15 +1484,11 @@ function AdminEventDetailsModal({
   const confirmedCount = attendees.filter((a) => a.status === 'confirmed').length;
 
   return (
-    <Modal animationType="slide" transparent visible onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/50">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ width: '100%', maxHeight: '94%' }}
-        >
+    <Modal animationType="slide" transparent visible statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+      <View className="flex-1 bg-black/50" style={{ paddingTop: insets.top + 24, justifyContent: 'flex-end' }}>
           <View
-            className="rounded-t-3xl border-t border-border bg-card w-full"
-            style={{ maxHeight: '100%' }}
+            className="rounded-t-3xl bg-card w-full"
+            style={{ maxHeight: '100%', paddingBottom: insets.bottom }}
           >
             {/* Header */}
             <View className="flex-row items-center justify-between border-b border-border px-5 py-4">
@@ -1424,7 +1511,8 @@ function AdminEventDetailsModal({
 
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 80 }}
+              automaticallyAdjustKeyboardInsets
+              contentContainerStyle={{ paddingBottom: 120 }}
             >
               {/* Event banner */}
               {event.image_url ? (
@@ -1553,7 +1641,6 @@ function AdminEventDetailsModal({
               </View>
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -1561,7 +1648,7 @@ function AdminEventDetailsModal({
 
 // ── Event Card (pressable, opens detail) ──────────────────────────────────────
 
-function EventCard({
+const EventCard = memo(function EventCard({
   event,
   onPress,
 }: {
@@ -1612,7 +1699,7 @@ function EventCard({
       </View>
     </Pressable>
   );
-}
+});
 
 // ── Events Tab ────────────────────────────────────────────────────────────────
 
@@ -1635,19 +1722,29 @@ function EventsTab({
   const [viewingEventId, setViewingEventId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [showNewEvent, setShowNewEvent] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setIsReady(true));
+    return () => task.cancel();
+  }, []);
 
   const viewingEvent = viewingEventId ? (events.find((e) => e.id === viewingEventId) ?? null) : null;
   const editingEvent = editingEventId ? (events.find((e) => e.id === editingEventId) ?? null) : null;
 
   const searchLower = searchQuery.toLowerCase().trim();
-  const filtered = events.filter((e) => {
-    const statusMatch = statusFilter === 'all' || e.status === statusFilter;
-    const searchMatch =
-      !searchLower ||
-      e.title.toLowerCase().includes(searchLower) ||
-      (e.category?.toLowerCase().includes(searchLower) ?? false);
-    return statusMatch && searchMatch;
-  });
+  const filteredEvents = useMemo(
+    () =>
+      events.filter((e) => {
+        const statusMatch = statusFilter === 'all' || e.status === statusFilter;
+        const searchMatch =
+          !searchLower ||
+          e.title.toLowerCase().includes(searchLower) ||
+          (e.category?.toLowerCase().includes(searchLower) ?? false);
+        return statusMatch && searchMatch;
+      }),
+    [events, statusFilter, searchLower],
+  );
 
   const statusCounts: Record<EventStatusFilter, number> = {
     all:       events.length,
@@ -1666,16 +1763,21 @@ function EventsTab({
   return (
     <>
       <FlatList
-        data={loading ? [] : filtered}
+        data={loading || !isReady ? [] : filteredEvents}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, paddingTop: 16 }}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={8}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        windowSize={3}
+        removeClippedSubviews={true}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
         ListHeaderComponent={
-          <View className="gap-3 mb-2 mt-2">
-            <View className="flex-row items-center gap-2">
-              <View className="flex-1 flex-row items-center gap-2 rounded-xl border border-input bg-card px-3 py-2">
-                <Search size={14} color={c.mutedForeground} />
+          <View className="mb-4 gap-3">
+            <View className="h-11 flex-row items-center gap-2">
+              <View className="h-full flex-1 flex-row items-center gap-2 rounded-xl border border-input bg-card px-3">
+                <Search size={16} color={c.mutedForeground} />
                 <TextInput
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -1686,7 +1788,7 @@ function EventsTab({
               </View>
               <Pressable
                 onPress={() => setShowNewEvent(true)}
-                className="flex-row items-center gap-1.5 rounded-xl bg-primary px-3 py-2.5 active:opacity-80"
+                className="h-full flex-row items-center gap-1.5 rounded-xl bg-primary px-4 active:opacity-80"
               >
                 <Plus size={14} color={c.primaryForeground} />
                 <Text className="text-xs font-semibold text-primary-foreground">New</Text>
@@ -1711,7 +1813,7 @@ function EventsTab({
           </View>
         }
         ListEmptyComponent={
-          loading ? (
+          loading || !isReady ? (
             <View>{[0, 1, 2].map((i) => <CardSkeleton key={i} compact />)}</View>
           ) : (
             <View className="items-center py-12">
@@ -2064,30 +2166,33 @@ function SupportTab({
     { id: 'all',      label: 'All',      count: tickets.length },
   ];
 
-  const filtered = filter === 'all' ? tickets : tickets.filter((t) => t.status === filter);
+  const filteredTickets = useMemo(
+    () => (filter === 'all' ? tickets : tickets.filter((t) => t.status === filter)),
+    [tickets, filter],
+  );
 
   return (
     <FlatList
-      data={loading ? [] : filtered}
+      data={loading ? [] : filteredTickets}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, paddingTop: 8 }}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, paddingTop: 16 }}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
       ListHeaderComponent={
-        <View className="flex-row gap-2 mb-4">
+        <View className="flex-row gap-1 mb-4 rounded-xl bg-muted/50 p-1">
           {filterTabs.map((tab) => (
             <Pressable
               key={tab.id}
               onPress={() => setFilter(tab.id)}
-              className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border py-2 ${
-                filter === tab.id ? 'border-primary bg-primary' : 'border-border bg-card'
+              className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-lg py-2 border ${
+                filter === tab.id ? 'bg-background border-border' : 'bg-muted/30 border-transparent'
               }`}
             >
-              <Text className={`text-xs font-semibold ${filter === tab.id ? 'text-primary-foreground' : 'text-muted-foreground'}`}>
+              <Text className={`text-xs font-semibold ${filter === tab.id ? 'text-foreground' : 'text-muted-foreground'}`}>
                 {tab.label}
               </Text>
-              <View className={`rounded-full px-1.5 py-0.5 ${filter === tab.id ? 'bg-primary-foreground/20' : 'bg-muted'}`}>
-                <Text className={`text-[10px] font-bold ${filter === tab.id ? 'text-primary-foreground' : 'text-muted-foreground'}`}>
+              <View className={`rounded-full px-1.5 py-0.5 ${filter === tab.id ? 'bg-primary/10' : 'bg-border/60'}`}>
+                <Text className={`text-[10px] font-bold ${filter === tab.id ? 'text-primary' : 'text-muted-foreground'}`}>
                   {tab.count}
                 </Text>
               </View>
@@ -2112,22 +2217,27 @@ function SupportTab({
         return (
           <Pressable
             onPress={() => onOpenChat(item)}
-            className="mb-2 rounded-2xl border border-border bg-card px-4 py-3.5 gap-1.5 active:bg-muted"
+            className="mb-2 flex-row items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 active:bg-muted"
           >
-            <View className="flex-row items-start justify-between gap-2">
-              <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
-                {item.subject ?? 'Support request'}
-              </Text>
-              <View className={`rounded-full px-2 py-0.5 ${isOpen ? 'bg-green-500/10' : 'bg-muted'}`}>
-                <Text className={`text-[10px] font-semibold ${isOpen ? 'text-green-600' : 'text-muted-foreground'}`}>
-                  {isOpen ? 'Open' : 'Resolved'}
-                </Text>
-              </View>
+            <View className={`h-10 w-10 shrink-0 items-center justify-center rounded-full ${isOpen ? 'bg-primary/10' : 'bg-muted'}`}>
+              <MessageSquare size={18} color={isOpen ? c.primary : c.mutedForeground} />
             </View>
-            <Text className="text-xs text-muted-foreground" numberOfLines={1}>
-              {item.user_name ?? item.user_email}
-            </Text>
-            <Text className="text-xs text-muted-foreground dark:text-zinc-400">{formatDate(item.created_at)}</Text>
+            <View className="flex-1 min-w-0 gap-0.5">
+              <View className="flex-row items-start justify-between gap-2">
+                <Text className="flex-1 text-sm font-semibold text-foreground" numberOfLines={1}>
+                  {item.subject ?? 'Support request'}
+                </Text>
+                <View className={`rounded-full px-2 py-0.5 ${isOpen ? 'bg-green-500/10' : 'bg-muted'}`}>
+                  <Text className={`text-[10px] font-semibold ${isOpen ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {isOpen ? 'Open' : 'Resolved'}
+                  </Text>
+                </View>
+              </View>
+              <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+                {item.user_name ?? item.user_email}
+              </Text>
+              <Text className="text-[11px] text-muted-foreground dark:text-zinc-400">{formatDate(item.created_at)}</Text>
+            </View>
           </Pressable>
         );
       }}
