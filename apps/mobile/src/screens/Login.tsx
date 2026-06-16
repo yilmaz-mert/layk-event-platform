@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -29,6 +30,20 @@ export default function Login({ onAuthenticated }: Props) {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -105,8 +120,16 @@ export default function Login({ onAuthenticated }: Props) {
       >
         <ScrollView
           className="flex-1"
-          contentContainerClassName="flex-grow items-center justify-center px-5 py-10"
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={{
+            flexGrow: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 20,
+            paddingTop: 40,
+            paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : 40,
+          }}
         >
           {/* Brand header */}
           <View className="mb-8 items-center">

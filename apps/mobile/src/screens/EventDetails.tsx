@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -45,6 +46,7 @@ export default function EventDetails({ eventId, onBack }: Props) {
   const [booking, setBooking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -56,6 +58,19 @@ export default function EventDetails({ eventId, onBack }: Props) {
   useEffect(() => {
     if (reservation) setSelectedSeats(reservation.tickets_requested);
   }, [reservation]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   async function fetchData(evId: string, userId: string) {
     setLoading(true);
@@ -213,7 +228,11 @@ export default function EventDetails({ eventId, onBack }: Props) {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={{ paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : 40 }}
+      >
         {/* Back navigation */}
         <Pressable onPress={onBack} className="flex-row items-center gap-1 p-3 rounded-xl active:bg-muted">
           <ArrowLeft size={28} color={c.mutedForeground} />

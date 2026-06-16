@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   InteractionManager,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -324,6 +325,7 @@ function UserDetailsModal({
   const [showRoleConfirm, setShowRoleConfirm] = useState(false);
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [editCount, setEditCount] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const roleBusy = updatingRoleId === user.id;
   const statusBusy = updatingId === user.id;
@@ -331,6 +333,19 @@ function UserDetailsModal({
   useEffect(() => {
     void fetchBookings();
   }, [user.id, refreshKey]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   async function fetchBookings() {
     setLoadingBookings(true);
@@ -423,7 +438,12 @@ function UserDetailsModal({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               automaticallyAdjustKeyboardInsets
-              contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: editingBookingId ? 280 : 120, gap: 20 }}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 20,
+                paddingBottom: editingBookingId ? 280 : keyboardHeight > 0 ? keyboardHeight + 40 : 40,
+                gap: 20,
+              }}
             >
               {/* Profile card */}
               <View className="rounded-2xl border border-border bg-background p-4 gap-4">
@@ -723,6 +743,20 @@ function AssignReservationModal({
   const [ticketCount, setTicketCount] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const activeEvents = events.filter((e) => e.status === 'active');
   const filtered = search.trim()
@@ -784,7 +818,12 @@ function AssignReservationModal({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               automaticallyAdjustKeyboardInsets
-              contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120, gap: 16 }}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 16,
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : 40,
+                gap: 16,
+              }}
             >
               <Text className="text-xs text-muted-foreground">
                 Assigning to:{' '}
@@ -1056,6 +1095,20 @@ function EventModal({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const STATUS_OPTIONS: { label: string; value: AdminEvent['status'] }[] = [
     { label: 'Active', value: 'active' },
@@ -1160,7 +1213,12 @@ function EventModal({
               className="flex-1"
               keyboardShouldPersistTaps="handled"
               automaticallyAdjustKeyboardInsets
-              contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16, gap: 14, paddingBottom: 120 }}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingVertical: 16,
+                gap: 14,
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : 40,
+              }}
               showsVerticalScrollIndicator={false}
             >
               {/* Title */}
@@ -1448,6 +1506,20 @@ function AdminEventDetailsModal({
   const insets = useSafeAreaInsets();
   const [attendees, setAttendees] = useState<AdminEventAttendee[]>([]);
   const [loadingAttendees, setLoadingAttendees] = useState(true);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const overbooked = event.booked_count > event.capacity;
   const fill = event.capacity > 0 ? Math.min(event.booked_count / event.capacity, 1) : 0;
@@ -1512,7 +1584,7 @@ function AdminEventDetailsModal({
             <ScrollView
               showsVerticalScrollIndicator={false}
               automaticallyAdjustKeyboardInsets
-              contentContainerStyle={{ paddingBottom: 120 }}
+              contentContainerStyle={{ paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : 40 }}
             >
               {/* Event banner */}
               {event.image_url ? (
