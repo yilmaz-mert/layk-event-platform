@@ -14,16 +14,19 @@
 //   4. The Edge Function approach means no app-side polling is needed and
 //      push delivery works even when the app is fully closed.
 
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from './supabase-mobile';
 
-// Returns true when running inside the Expo Go client (SDK 53+ dropped Android
-// push support in Expo Go, so we must skip all Notifications API calls there).
+// SDK 54+: appOwnership is deprecated; executionEnvironment is the canonical
+// way to detect Expo Go. Keep the legacy fallback for any edge cases.
 function isExpoGo(): boolean {
-  return Constants.appOwnership === 'expo';
+  return (
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+    Constants.appOwnership === 'expo'
+  );
 }
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
@@ -33,36 +36,36 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null;
   }
 
-  // Push notifications are only available on physical devices
+  // Push notifications are only available on physical devices.
   if (!Device.isDevice) {
     console.warn('[Push] Push notifications require a physical device.');
     return null;
   }
 
-  // Android requires a notification channel for foreground delivery
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('layk-default', {
-      name: "L'Ayk Notifications",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#0f172a',
-    });
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    console.warn('[Push] Permission not granted for push notifications.');
-    return null;
-  }
-
   try {
+    // Android requires a notification channel for foreground delivery.
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('layk-default', {
+        name: "L'Ayk Notifications",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#0f172a',
+      });
+    }
+
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') {
+      console.warn('[Push] Permission not granted for push notifications.');
+      return null;
+    }
+
     const tokenData = await Notifications.getExpoPushTokenAsync({
       // Replace with your actual Expo project ID from app.json / EAS
       projectId: undefined,

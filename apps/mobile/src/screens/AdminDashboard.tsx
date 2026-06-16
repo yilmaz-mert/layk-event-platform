@@ -17,12 +17,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  Calendar,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
   Clock,
   Edit3,
+  LifeBuoy,
   LogOut,
+  Megaphone,
   MessageSquare,
   Moon,
   Plus,
@@ -33,6 +36,7 @@ import {
   Users,
   X,
   XCircle,
+  type LucideProps,
 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useColorScheme } from 'nativewind';
@@ -181,14 +185,16 @@ function ApprovalBadge({ status }: { status: ApprovalStatus }) {
 
 // ── Pill tab bar ──────────────────────────────────────────────────────────────
 
-const PORTAL_TABS: { id: AdminPortalTab; label: string }[] = [
-  { id: 'users',     label: 'Users' },
-  { id: 'events',    label: 'Events' },
-  { id: 'broadcast', label: 'Broadcast' },
-  { id: 'support',   label: 'Support' },
+type TabIcon = React.ComponentType<LucideProps & { size?: number; color?: string; strokeWidth?: number }>;
+
+const PORTAL_TABS: { id: AdminPortalTab; label: string; Icon: TabIcon }[] = [
+  { id: 'users',     label: 'Users',     Icon: Users },
+  { id: 'events',    label: 'Events',    Icon: Calendar },
+  { id: 'broadcast', label: 'Broadcast', Icon: Megaphone },
+  { id: 'support',   label: 'Support',   Icon: LifeBuoy },
 ];
 
-function PillTabBar({
+function AdminTabBar({
   active,
   onPress,
   openTicketCount,
@@ -199,37 +205,49 @@ function PillTabBar({
   openTicketCount: number;
   pendingUserCount: number;
 }) {
+  const c = useColors();
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 20, gap: 8, flexDirection: 'row', alignItems: 'center' }}
-    >
-      {PORTAL_TABS.map(({ id, label }) => {
+    <View className="w-full flex-row px-2 border-b border-border bg-background">
+      {PORTAL_TABS.map(({ id, label, Icon }) => {
         const isActive = active === id;
         const badge = id === 'support' ? openTicketCount : id === 'users' ? pendingUserCount : 0;
         return (
           <Pressable
             key={id}
             onPress={() => onPress(id)}
-            className={`shrink-0 flex-row items-center gap-1.5 rounded-full border px-4 py-2 ${
-              isActive ? 'border-primary bg-primary' : 'border-border bg-card'
-            }`}
+            className="relative flex-1 items-center justify-center py-3"
           >
-            <Text className={`text-sm font-semibold ${isActive ? 'text-primary-foreground' : 'text-foreground'}`}>
-              {label}
-            </Text>
+            <View className="items-center gap-1">
+              <Icon
+                size={18}
+                color={isActive ? c.primary : c.mutedForeground}
+                strokeWidth={isActive ? 2.25 : 1.75}
+              />
+              <Text
+                className={`text-[11px] font-medium tracking-wide capitalize ${
+                  isActive ? 'text-primary' : 'text-muted-foreground'
+                }`}
+              >
+                {label}
+              </Text>
+            </View>
+
             {badge > 0 && (
-              <View className={`h-5 min-w-[20px] items-center justify-center rounded-full px-1 ${isActive ? 'bg-primary-foreground/20' : 'bg-primary/10'}`}>
-                <Text className={`text-[10px] font-bold ${isActive ? 'text-primary-foreground' : 'text-primary'}`}>
-                  {badge}
+              <View className="absolute right-2 top-1.5 h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-0.5">
+                <Text className="text-[9px] font-bold text-primary-foreground">
+                  {badge > 99 ? '99+' : String(badge)}
                 </Text>
               </View>
+            )}
+
+            {isActive && (
+              <View className="absolute bottom-0 left-1 right-1 h-[3px] rounded-t-full bg-primary" />
             )}
           </Pressable>
         );
       })}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -2295,15 +2313,13 @@ export default function AdminDashboard({ onSignOut }: Props) {
         </View>
       </View>
 
-      {/* Pill tab bar */}
-      <View className="mb-3">
-        <PillTabBar
-          active={adminTab}
-          onPress={setAdminTab}
-          openTicketCount={openTicketCount}
-          pendingUserCount={pendingCount}
-        />
-      </View>
+      {/* Segmented tab bar */}
+      <AdminTabBar
+        active={adminTab}
+        onPress={setAdminTab}
+        openTicketCount={openTicketCount}
+        pendingUserCount={pendingCount}
+      />
 
       {/* Tab content */}
       {adminTab === 'users' && (

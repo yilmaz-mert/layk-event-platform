@@ -5,12 +5,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AlertCircle } from 'lucide-react-native';
 import { supabase } from '../lib/supabase-mobile';
 import { colors } from '../colors';
