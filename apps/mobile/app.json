@@ -47,7 +47,8 @@
           "faceIDPermission": "Allow L'Ayk to access Face ID for secure session storage."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-notifications"
     ],
     "extra": {
       "eas": {

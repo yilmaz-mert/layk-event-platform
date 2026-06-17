@@ -244,7 +244,7 @@ export default function Profile({ onSupportPress }: Props) {
                   <Text className="text-sm text-muted-foreground opacity-60">
                     {profile?.email}
                   </Text>
-                  <Text className="mt-1 text-xs text-muted-foreground/60">
+                  <Text className="mt-1 text-xs text-muted-foreground opacity-60">
                     Email cannot be changed here.
                   </Text>
                 </View>

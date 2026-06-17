@@ -237,20 +237,16 @@ export default function UserFeed({ onEventPress }: Props) {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top', 'left', 'right']}>
-      {/* Brand header */}
-      <View className="flex-row items-center gap-2.5 px-5 pt-5 pb-1">
+      {/* Brand header + inline search */}
+      <View className="flex-row items-center gap-3 px-4 pt-5 pb-2">
         <Image
           source={require('../../assets/icon.png')}
           style={{ width: 32, height: 32, borderRadius: 8 }}
           resizeMode="cover"
         />
         <Text className="text-xl font-bold tracking-tight text-foreground">L&apos;Ayk</Text>
-      </View>
-
-      {/* Search bar */}
-      <View className="mx-4 mt-3 mb-2">
-        <View className="flex-row items-center gap-2.5 rounded-xl border border-input bg-background px-3.5 py-1">
-          <Search size={16} color={c.mutedForeground} />
+        <View className="ml-1 flex-1 flex-row items-center gap-2 rounded-xl border border-input bg-background px-3 py-1.5">
+          <Search size={15} color={c.mutedForeground} />
           <TextInput
             className="flex-1 text-sm text-foreground"
             placeholder="Search events…"

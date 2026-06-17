@@ -60,7 +60,7 @@ function TabBar({ active, onPress }: TabBarProps) {
   return (
     <View
       className="flex-row border-t border-border bg-card"
-      style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+      style={{ paddingBottom: Math.max(insets.bottom + 4, 16), paddingTop: 10 }}
     >
       {tabs.map(({ id, label, Icon }) => {
         const isActive = active === id;
@@ -68,7 +68,7 @@ function TabBar({ active, onPress }: TabBarProps) {
           <Pressable
             key={id}
             onPress={() => onPress(id)}
-            className="flex-1 items-center justify-center pt-2.5 gap-1"
+            className="flex-1 items-center justify-center gap-1.5"
           >
             <Icon
               size={21}

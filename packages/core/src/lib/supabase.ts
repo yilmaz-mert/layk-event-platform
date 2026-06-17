@@ -12,16 +12,24 @@ function resolveEnv(viteKey: string, expoKey: string): string {
   return '';
 }
 
-export const supabaseUrl = resolveEnv('VITE_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_URL');
-export const supabaseAnonKey = resolveEnv('VITE_SUPABASE_ANON_KEY', 'EXPO_PUBLIC_SUPABASE_ANON_KEY');
+const resolvedSupabaseUrl = resolveEnv('VITE_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_URL');
+const resolvedSupabaseAnonKey = resolveEnv('VITE_SUPABASE_ANON_KEY', 'EXPO_PUBLIC_SUPABASE_ANON_KEY');
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Supabase credentials missing. ' +
-    'Web: set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY. ' +
+if (!resolvedSupabaseUrl || !resolvedSupabaseAnonKey) {
+  // Throwing here would crash the whole app at import time (before any screen
+  // can render, e.g. on a cold Android launch with a misconfigured EAS build
+  // profile). Log loudly and fall back to a syntactically valid placeholder so
+  // createClient() doesn't throw — real Supabase calls will then fail at the
+  // call site, where existing error handling/timeouts already cover it.
+  console.error(
+    'Supabase credentials missing — using a placeholder client that will fail on first ' +
+    'network call. Web: set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY. ' +
     'Mobile: set EXPO_PUBLIC_SUPABASE_URL + EXPO_PUBLIC_SUPABASE_ANON_KEY.',
   );
 }
+
+export const supabaseUrl = resolvedSupabaseUrl || 'https://galbfihqzpbpthusazgf.supabase.co';
+export const supabaseAnonKey = resolvedSupabaseAnonKey || 'sb_publishable_K13p3v4iGPFpEelKhg3vow_rG-vDDw6';
 
 // Factory — lets each platform provide its own auth storage adapter.
 // The web singleton below uses browser localStorage (Supabase default).
