@@ -7,6 +7,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase-mobile';
 import type { UserProfile } from '../types';
+import { initPushNotifications } from '../lib/notifications';
 
 interface AuthContextValue {
   session: Session | null;
@@ -73,6 +74,12 @@ export function MobileAuthProvider({ children }: { children: ReactNode }) {
 
       setProfile((data as UserProfile) ?? null);
       setLoading(false);
+
+      // Fire push-token registration immediately after profile resolves so we
+      // never miss a session. Fire-and-forget: auth flow must not block on it.
+      if (data?.id) {
+        initPushNotifications(data.id).catch(() => {});
+      }
     } catch {
       setProfile(null);
       setLoading(false);

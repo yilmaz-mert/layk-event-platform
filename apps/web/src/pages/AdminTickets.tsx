@@ -1,18 +1,11 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 import { Headphones, Loader2, MessageSquare } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatShortDate } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { cn } from '@layk/core';
 import TicketChat, { type SupportTicket } from '@/components/TicketChat';
 
 type StatusFilter = 'open' | 'resolved' | 'all';
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-  }).format(new Date(iso));
-}
 
 export default function AdminTickets() {
   const { profile } = useAuth();
@@ -71,14 +64,20 @@ export default function AdminTickets() {
     statusFilter === 'all' ? tickets : tickets.filter((t) => t.status === statusFilter);
 
   const tabs: { label: string; value: StatusFilter; count: number }[] = [
-    { label: 'Open', value: 'open', count: tickets.filter((t) => t.status === 'open').length },
+    { label: 'Açık', value: 'open', count: tickets.filter((t) => t.status === 'open').length },
     {
-      label: 'Resolved',
+      label: 'Çözüldü',
       value: 'resolved',
       count: tickets.filter((t) => t.status === 'resolved').length,
     },
-    { label: 'All', value: 'all', count: tickets.length },
+    { label: 'Tümü', value: 'all', count: tickets.length },
   ];
+
+  const emptyStateLabel: Record<StatusFilter, string> = {
+    open: 'Açık talep yok',
+    resolved: 'Çözülmüş talep yok',
+    all: 'Talep yok',
+  };
 
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
@@ -93,7 +92,7 @@ export default function AdminTickets() {
         <div className="shrink-0 border-b px-4 py-3">
           <div className="flex items-center gap-2">
             <Headphones className="h-4 w-4 text-primary" />
-            <h1 className="font-semibold text-foreground">Support Tickets</h1>
+            <h1 className="font-semibold text-foreground">Destek Talepleri</h1>
           </div>
           <div className="mt-3 flex gap-1">
             {tabs.map((tab) => (
@@ -134,13 +133,13 @@ export default function AdminTickets() {
             <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
               <MessageSquare className="h-8 w-8 text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">
-                No {statusFilter !== 'all' ? statusFilter : ''} tickets
+                {emptyStateLabel[statusFilter]}
               </p>
             </div>
           ) : (
             filteredTickets.map((ticket) => {
               const userName =
-                ticket.users?.full_name ?? ticket.users?.email ?? 'Unknown user';
+                ticket.users?.full_name ?? ticket.users?.email ?? 'Bilinmeyen kullanıcı';
               return (
                 <button
                   key={ticket.id}
@@ -163,12 +162,12 @@ export default function AdminTickets() {
                           : 'bg-muted text-muted-foreground',
                       )}
                     >
-                      {ticket.status === 'open' ? 'Open' : 'Resolved'}
+                      {ticket.status === 'open' ? 'Açık' : 'Çözüldü'}
                     </span>
                   </div>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{userName}</p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground/50">
-                    {formatDate(ticket.created_at)}
+                    {formatShortDate(ticket.created_at)}
                   </p>
                 </button>
               );
@@ -193,7 +192,7 @@ export default function AdminTickets() {
         <div className="hidden flex-1 flex-col items-center justify-center gap-2 text-center md:flex">
           <Headphones className="h-10 w-10 text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">
-            Select a ticket to view the conversation
+            Görüntülemek için bir talep seçin
           </p>
         </div>
       )}

@@ -20,7 +20,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatShortDate, formatDateTime } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
@@ -76,24 +76,6 @@ const STATUS_ORDER: Record<ApprovalStatus, number> = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatJoinDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(iso));
-}
-
-function formatDateTime(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso));
-}
 
 function getInitials(name: string | null, email: string): string {
   if (name?.trim()) {
@@ -170,7 +152,7 @@ function StatusBadge({ status }: { status: ApprovalStatus }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-600 dark:text-green-400">
         <CheckCircle2 className="h-3 w-3" />
-        Approved
+        Onaylandı
       </span>
     );
   }
@@ -178,14 +160,14 @@ function StatusBadge({ status }: { status: ApprovalStatus }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
         <XCircle className="h-3 w-3" />
-        Rejected
+        Reddedildi
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-semibold text-yellow-600 dark:text-yellow-400">
       <Clock className="h-3 w-3" />
-      Pending
+      Beklemede
     </span>
   );
 }
@@ -194,12 +176,12 @@ function RoleBadge({ role }: { role: UserRecord['role'] }) {
   return role === 'admin' ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
       <ShieldCheck className="h-3 w-3" />
-      Admin
+      Yönetici
     </span>
   ) : (
     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
       <UserIcon className="h-3 w-3" />
-      User
+      Kullanıcı
     </span>
   );
 }
@@ -226,9 +208,9 @@ function ApprovalSelect({
       onChange={(e) => onChange(e.target.value as ApprovalStatus)}
       className={selectClass}
     >
-      <option value="pending">Pending</option>
-      <option value="approved">Approved</option>
-      <option value="rejected">Rejected</option>
+      <option value="pending">Beklemede</option>
+      <option value="approved">Onaylandı</option>
+      <option value="rejected">Reddedildi</option>
     </select>
   );
 }
@@ -249,8 +231,8 @@ function RoleSelect({
       onChange={(e) => onChange(e.target.value as 'admin' | 'user')}
       className={selectClass}
     >
-      <option value="user">User</option>
-      <option value="admin">Admin</option>
+      <option value="user">Kullanıcı</option>
+      <option value="admin">Yönetici</option>
     </select>
   );
 }
@@ -431,13 +413,13 @@ function AdminBookingItem({
         </p>
         <span
           className={cn(
-            'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold capitalize',
+            'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold',
             booking.status === 'confirmed'
               ? 'bg-green-500/10 text-green-600 dark:text-green-400'
               : 'bg-muted text-muted-foreground line-through',
           )}
         >
-          {booking.status}
+          {booking.status === 'confirmed' ? 'Onaylandı' : 'İptal Edildi'}
         </span>
       </div>
 
@@ -457,7 +439,7 @@ function AdminBookingItem({
         )}
         <span className="flex items-center gap-1">
           <Ticket className="h-3 w-3 shrink-0" />
-          {booking.tickets_requested} ticket{booking.tickets_requested !== 1 ? 's' : ''}
+          {booking.tickets_requested} kişi
         </span>
         {ev && (
           <span
@@ -470,14 +452,14 @@ function AdminBookingItem({
                   : '',
             )}
           >
-            {ev.booked_count}/{ev.capacity} seats
-            {ev.booked_count > ev.capacity && ' ⚠ overbooked'}
+            {ev.booked_count}/{ev.capacity} kontenjan
+            {ev.booked_count > ev.capacity && ' ⚠ aşırı rezervasyon'}
           </span>
         )}
         {ev?.status && (
           <span
             className={cn(
-              'rounded-full px-1.5 py-0.5 capitalize',
+              'rounded-full px-1.5 py-0.5',
               ev.status === 'active'
                 ? 'bg-primary/10 text-primary'
                 : ev.status === 'completed'
@@ -485,7 +467,7 @@ function AdminBookingItem({
                   : 'bg-destructive/10 text-destructive',
             )}
           >
-            {ev.status}
+            {ev.status === 'active' ? 'Aktif' : ev.status === 'completed' ? 'Tamamlandı' : 'İptal Edildi'}
           </span>
         )}
       </div>
@@ -494,7 +476,7 @@ function AdminBookingItem({
       {upcoming && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Tickets:</span>
+            <span className="text-xs text-muted-foreground">Bilet:</span>
             <TicketCounter
               value={localTickets}
               min={1}
@@ -511,7 +493,7 @@ function AdminBookingItem({
               disabled={busy}
               className="rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? 'Saving…' : 'Save'}
+              {busy ? 'Kaydediliyor…' : 'Kaydet'}
             </button>
           )}
 
@@ -522,7 +504,7 @@ function AdminBookingItem({
             className="ml-auto flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-1 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Trash2 className="h-3 w-3" />
-            {busy ? 'Cancelling…' : 'Cancel'}
+            {busy ? 'İptal ediliyor…' : 'İptal Et'}
           </button>
         </div>
       )}
@@ -595,17 +577,17 @@ function EventCombo({
           >
             {formatDateTime(selected.event_date)}
             {overbooked
-              ? ` · ${Math.abs(spotsLeft)} over capacity ⚠`
+              ? ` · ${Math.abs(spotsLeft)} kontenjan aşıldı ⚠`
               : spotsLeft === 0
-                ? ' · Fully booked'
-                : ` · ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left`}
+                ? ' · Kontenjan doldu'
+                : ` · ${spotsLeft} kontenjan kaldı`}
           </p>
         </div>
         <button
           type="button"
           onClick={onClear}
           disabled={disabled}
-          aria-label="Clear selection"
+          aria-label="Seçimi temizle"
           className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none"
         >
           <X className="h-3.5 w-3.5" />
@@ -629,7 +611,7 @@ function EventCombo({
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          placeholder="Search active events…"
+          placeholder="Aktif etkinlik ara…"
           disabled={disabled}
           className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
         />
@@ -639,7 +621,7 @@ function EventCombo({
         <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-input bg-background shadow-lg">
           {filtered.length === 0 ? (
             <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-              {query.trim() ? `No results for "${query}"` : 'No available events'}
+              {query.trim() ? `"${query}" için sonuç yok` : 'Uygun etkinlik yok'}
             </p>
           ) : (
             filtered.map((o) => {
@@ -666,10 +648,10 @@ function EventCombo({
                   >
                     {formatDateTime(o.event_date)}
                     {overbooked
-                      ? ` · ${Math.abs(spotsLeft)} over capacity ⚠`
+                      ? ` · ${Math.abs(spotsLeft)} kontenjan aşıldı ⚠`
                       : spotsLeft === 0
-                        ? ' · Fully booked'
-                        : ` · ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left`}
+                        ? ' · Kontenjan doldu'
+                        : ` · ${spotsLeft} kontenjan kaldı`}
                   </span>
                 </button>
               );
@@ -790,12 +772,12 @@ function UserProfileDrawer({
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Tickets updated.');
+      toast.success('Bilet sayısı güncellendi.');
       if (booking?.events?.title) {
         await supabase.from('notifications').insert({
           user_id: user.id,
-          title: 'Reservation Updated',
-          message: `An administrator has updated your reservation for "${booking.events.title}" to ${newCount} ticket${newCount !== 1 ? 's' : ''}.`,
+          title: 'Rezervasyon Güncellendi',
+          message: `Bir yönetici "${booking.events.title}" için rezervasyonunuzu ${newCount} kişilik olarak güncelledi.`,
           type: 'admin_broadcast',
         });
       }
@@ -815,12 +797,12 @@ function UserProfileDrawer({
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Reservation cancelled.');
+      toast.success('Rezervasyon iptal edildi.');
       if (booking?.events?.title) {
         await supabase.from('notifications').insert({
           user_id: user.id,
-          title: 'Reservation Cancelled',
-          message: `Your reservation for "${booking.events.title}" has been cancelled by an administrator.`,
+          title: 'Rezervasyon İptal Edildi',
+          message: `"${booking.events.title}" için rezervasyonunuz bir yönetici tarafından iptal edildi.`,
           type: 'admin_broadcast',
         });
       }
@@ -843,12 +825,12 @@ function UserProfileDrawer({
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Reservation created successfully.');
+      toast.success('Rezervasyon başarıyla oluşturuldu.');
       if (eventTitle) {
         await supabase.from('notifications').insert({
           user_id: user.id,
-          title: 'Reservation Created',
-          message: `An administrator has registered you for "${eventTitle}" with ${newTickets} ticket${newTickets !== 1 ? 's' : ''}.`,
+          title: 'Rezervasyon Oluşturuldu',
+          message: `Bir yönetici sizi "${eventTitle}" etkinliğine ${newTickets} kişilik olarak kaydetti.`,
           type: 'admin_broadcast',
         });
       }
@@ -920,7 +902,7 @@ function UserProfileDrawer({
           </div>
           <button
             onClick={handleClose}
-            aria-label="Close profile drawer"
+            aria-label="Profil panelini kapat"
             className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             <X className="h-4 w-4" />
@@ -933,33 +915,33 @@ function UserProfileDrawer({
           {/* ── Profile metadata ───────────────────────────────────────────── */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Profile Details
+              Profil Bilgileri
             </h3>
             <div className="divide-y rounded-xl border bg-muted/30">
-              <MetaRow icon={<Mail className="h-4 w-4" />} label="Email" value={user.email} />
+              <MetaRow icon={<Mail className="h-4 w-4" />} label="E-posta" value={user.email} />
               <MetaRow
                 icon={<Phone className="h-4 w-4" />}
-                label="Phone"
-                value={user.phone_number ?? 'No phone provided'}
+                label="Telefon"
+                value={user.phone_number ?? 'Telefon girilmemiş'}
                 dimmed={!user.phone_number}
               />
               <MetaRow
                 icon={<CalendarDays className="h-4 w-4" />}
-                label="Joined"
-                value={formatJoinDate(user.created_at)}
+                label="Katıldı"
+                value={formatShortDate(user.created_at)}
               />
               <div className="flex items-center gap-3 px-4 py-3">
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <ShieldCheck className="h-4 w-4" />
                 </span>
-                <span className="w-14 shrink-0 text-xs text-muted-foreground">Role</span>
+                <span className="w-14 shrink-0 text-xs text-muted-foreground">Rol</span>
                 <RoleBadge role={user.role} />
               </div>
               <div className="flex items-center gap-3 px-4 py-3">
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <CheckCircle2 className="h-4 w-4" />
                 </span>
-                <span className="w-14 shrink-0 text-xs text-muted-foreground">Status</span>
+                <span className="w-14 shrink-0 text-xs text-muted-foreground">Durum</span>
                 <StatusBadge status={user.approval_status} />
               </div>
             </div>
@@ -969,11 +951,11 @@ function UserProfileDrawer({
           <section>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Booking History
+                Rezervasyon Geçmişi
               </h3>
               {!loadingBookings && (
                 <span className="text-xs text-muted-foreground">
-                  {bookings.length} {bookings.length === 1 ? 'booking' : 'bookings'}
+                  {bookings.length} rezervasyon
                 </span>
               )}
             </div>
@@ -984,7 +966,7 @@ function UserProfileDrawer({
               </div>
             ) : bookings.length === 0 ? (
               <div className="rounded-xl border border-dashed py-10 text-center">
-                <p className="text-sm text-muted-foreground">No bookings yet.</p>
+                <p className="text-sm text-muted-foreground">Henüz rezervasyon yok.</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1005,7 +987,7 @@ function UserProfileDrawer({
           <section>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                New Reservation
+                Yeni Rezervasyon
               </h3>
               {!showNewForm && (
                 <button
@@ -1014,7 +996,7 @@ function UserProfileDrawer({
                   className="flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 >
                   <PlusCircle className="h-3.5 w-3.5" />
-                  Add
+                  Ekle
                 </button>
               )}
             </div>
@@ -1023,7 +1005,7 @@ function UserProfileDrawer({
               <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
                 {/* Event selector */}
                 <div>
-                  <p className="mb-1.5 text-xs text-muted-foreground">Select event</p>
+                  <p className="mb-1.5 text-xs text-muted-foreground">Etkinlik seçin</p>
                   <EventCombo
                     options={availableEvents}
                     value={newEventId}
@@ -1037,10 +1019,10 @@ function UserProfileDrawer({
                 {newEventId && (
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs text-muted-foreground">
-                      Tickets
+                      Bilet
                       {selectedEvent && (
                         <span className="ml-1 text-muted-foreground/50">
-                          (user limit: {selectedEvent.max_tickets_per_user}, admin override active)
+                          (kullanıcı limiti: {selectedEvent.max_tickets_per_user}, yönetici geçersiz kılması aktif)
                         </span>
                       )}
                     </p>
@@ -1063,7 +1045,7 @@ function UserProfileDrawer({
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Ticket className="h-4 w-4" />
-                    {creating ? 'Booking…' : 'Book Event'}
+                    {creating ? 'Rezerve ediliyor…' : 'Etkinliğe Kaydet'}
                   </button>
                   <button
                     type="button"
@@ -1075,7 +1057,7 @@ function UserProfileDrawer({
                     disabled={creating}
                     className="rounded-lg border px-3 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none"
                   >
-                    Cancel
+                    Vazgeç
                   </button>
                 </div>
               </div>
@@ -1083,7 +1065,7 @@ function UserProfileDrawer({
 
             {!showNewForm && availableEvents.length === 0 && !loadingBookings && (
               <p className="text-xs text-muted-foreground">
-                This user is already registered for all active events.
+                Bu kullanıcı tüm aktif etkinliklere zaten kayıtlı.
               </p>
             )}
           </section>
@@ -1121,14 +1103,14 @@ function UserTableRow({
       {/* Name + email + phone */}
       <td className="p-4">
         <p className="text-sm font-medium text-foreground">
-          {user.full_name ?? <span className="italic text-muted-foreground/50">No name set</span>}
+          {user.full_name ?? <span className="italic text-muted-foreground/50">Ad girilmemiş</span>}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">{user.email}</p>
         <p className={cn(
           'mt-0.5 text-xs',
           user.phone_number ? 'text-muted-foreground' : 'italic text-muted-foreground/40',
         )}>
-          {user.phone_number ?? 'No phone provided'}
+          {user.phone_number ?? 'Telefon girilmemiş'}
         </p>
       </td>
 
@@ -1152,10 +1134,10 @@ function UserTableRow({
 
       {/* Joined date */}
       <td className="p-4">
-        <span className="text-xs text-muted-foreground">{formatJoinDate(user.created_at)}</span>
+        <span className="text-xs text-muted-foreground">{formatShortDate(user.created_at)}</span>
         {isSelf && (
           <span className="ml-2 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
-            You
+            Siz
           </span>
         )}
       </td>
@@ -1190,7 +1172,7 @@ function UserCard({
             </p>
             {isSelf && (
               <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
-                You
+                Siz
               </span>
             )}
           </div>
@@ -1199,7 +1181,7 @@ function UserCard({
             'truncate text-xs',
             user.phone_number ? 'text-muted-foreground' : 'italic text-muted-foreground/40',
           )}>
-            {user.phone_number ?? 'No phone provided'}
+            {user.phone_number ?? 'Telefon girilmemiş'}
           </p>
         </div>
         <StatusBadge status={user.approval_status} />
@@ -1225,13 +1207,13 @@ function UserCard({
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground/70">
-          Joined {formatJoinDate(user.created_at)}
+          Katıldı: {formatShortDate(user.created_at)}
         </p>
         <button
           onClick={() => onView(user)}
           className="rounded-lg border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
         >
-          View Profile →
+          Profili Görüntüle →
         </button>
       </div>
     </div>
@@ -1286,8 +1268,8 @@ export default function AdminDashboard() {
     if (error) {
       toast.error(error.message);
     } else {
-      const label = newStatus === 'approved' ? 'Approved' : newStatus === 'rejected' ? 'Rejected' : 'set to Pending';
-      toast.success(`Status ${label}.`);
+      const label = newStatus === 'approved' ? 'Onaylandı' : newStatus === 'rejected' ? 'Reddedildi' : 'Beklemede olarak ayarlandı';
+      toast.success(`Durum: ${label}.`);
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, approval_status: newStatus } : u)),
       );
@@ -1305,7 +1287,7 @@ export default function AdminDashboard() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success(`Role set to ${newRole}.`);
+      toast.success(`Rol ${newRole === 'admin' ? 'Yönetici' : 'Kullanıcı'} olarak ayarlandı.`);
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)),
       );
@@ -1350,18 +1332,18 @@ export default function AdminDashboard() {
       <main className="mx-auto max-w-5xl px-4 pb-16 pt-6">
         {/* Page header */}
         <div className="mb-5">
-          <h1 className="text-xl font-bold text-foreground">User Management</h1>
+          <h1 className="text-xl font-bold text-foreground">Kullanıcı Yönetimi</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {loading ? (
               <span className="inline-block h-4 w-32 animate-pulse rounded bg-muted" />
             ) : (
               <>
                 {searchQuery
-                  ? `${displayedUsers.length} of ${users.length} members`
-                  : `${users.length} ${users.length === 1 ? 'member' : 'members'} registered`}
+                  ? `${displayedUsers.length} / ${users.length} üye`
+                  : `${users.length} üye kayıtlı`}
                 {pendingCount > 0 && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-semibold text-yellow-600 dark:text-yellow-400">
-                    {pendingCount} pending
+                    {pendingCount} beklemede
                   </span>
                 )}
               </>
@@ -1376,7 +1358,7 @@ export default function AdminDashboard() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name or email…"
+            placeholder="Ad veya e-postaya göre ara…"
             className={
               'w-full rounded-xl border border-input bg-background py-2.5 pl-9 pr-4 text-sm ' +
               'text-foreground placeholder:text-muted-foreground focus:outline-none ' +
@@ -1390,10 +1372,10 @@ export default function AdminDashboard() {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b bg-muted/40">
-                <SortableHeader label="Name" col="name" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-                <th className="p-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Role</th>
-                <SortableHeader label="Status" col="status" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-                <SortableHeader label="Joined" col="date" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <SortableHeader label="Ad Soyad" col="name" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <th className="p-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rol</th>
+                <SortableHeader label="Durum" col="status" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <SortableHeader label="Katıldı" col="date" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               </tr>
             </thead>
             <tbody>
@@ -1415,7 +1397,7 @@ export default function AdminDashboard() {
 
           {!loading && displayedUsers.length === 0 && (
             <p className="py-12 text-center text-sm text-muted-foreground">
-              {searchQuery ? `No users match "${searchQuery}".` : 'No users found.'}
+              {searchQuery ? `"${searchQuery}" ile eşleşen kullanıcı yok.` : 'Kullanıcı bulunamadı.'}
             </p>
           )}
         </div>
@@ -1427,7 +1409,7 @@ export default function AdminDashboard() {
             : displayedUsers.length === 0
               ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">
-                  {searchQuery ? `No users match "${searchQuery}".` : 'No users found.'}
+                  {searchQuery ? `"${searchQuery}" ile eşleşen kullanıcı yok.` : 'Kullanıcı bulunamadı.'}
                 </p>
               )
               : displayedUsers.map((user) => (

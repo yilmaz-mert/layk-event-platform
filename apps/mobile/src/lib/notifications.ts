@@ -89,13 +89,20 @@ export async function savePushTokenToProfile(
   userId: string,
   token: string,
 ): Promise<void> {
-  const { error } = await supabase
+  // .select('id').single() makes silent failures visible: if RLS blocks the
+  // write or the row doesn't exist, we get a real error instead of a no-op
+  // that looks like success.
+  const { data, error } = await supabase
     .from('users')
     .update({ push_token: token })
-    .eq('id', userId);
+    .eq('id', userId)
+    .select('id')
+    .single();
 
   if (error) {
-    console.error('[Push] Failed to save push token:', error.message);
+    console.error('[Push] Failed to save push token:', error.message, '| code:', error.code);
+  } else if (!data) {
+    console.warn('[Push] push_token update matched 0 rows — check RLS for user', userId);
   } else {
     console.log('[Push] Token saved for user', userId);
   }

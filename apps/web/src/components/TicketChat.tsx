@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCheck, Loader2, Send } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatTime } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
 import { setActiveTicketId } from '@/lib/activeTicket';
@@ -21,13 +21,6 @@ interface TicketMessage {
   sender_role: 'admin' | 'user';
   message: string;
   created_at: string;
-}
-
-function formatTime(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso));
 }
 
 interface Props {
@@ -174,7 +167,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Ticket marked as resolved.');
+      toast.success('Talep çözüldü olarak işaretlendi.');
       setTicketStatus('resolved');
       onResolved?.();
     }
@@ -191,7 +184,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
           <button
             type="button"
             onClick={onBack}
-            aria-label="Back to tickets"
+            aria-label="Taleplere dön"
             className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -213,7 +206,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
                   : 'bg-green-500/10 text-green-600 dark:text-green-400',
               )}
             >
-              {isLocked ? 'Resolved' : 'Open'}
+              {isLocked ? 'Çözüldü' : 'Açık'}
             </span>
           </div>
         </div>
@@ -225,7 +218,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
             className="flex shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <CheckCheck className="h-3.5 w-3.5" />
-            {resolving ? 'Resolving…' : 'Mark Resolved'}
+            {resolving ? 'Çözülüyor…' : 'Çözüldü İşaretle'}
           </button>
         )}
       </div>
@@ -238,12 +231,12 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-sm text-muted-foreground">No messages yet.</p>
+            <p className="text-sm text-muted-foreground">Henüz mesaj yok.</p>
             {!isLocked && (
               <p className="mt-1 text-xs text-muted-foreground/60">
                 {isAdmin
-                  ? 'Reply below to start the conversation.'
-                  : 'Send a message to get help.'}
+                  ? 'Görüşmeyi başlatmak için aşağıdan yanıt verin.'
+                  : 'Yardım almak için bir mesaj gönderin.'}
               </p>
             )}
           </div>
@@ -265,7 +258,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
                           : 'text-left text-muted-foreground/60',
                       )}
                     >
-                      {isOwn ? 'You' : msg.sender_role === 'admin' ? 'Support' : 'User'}
+                      {isOwn ? 'Siz' : msg.sender_role === 'admin' ? 'Destek' : 'Kullanıcı'}
                     </p>
                     <div
                       className={cn(
@@ -299,7 +292,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
       <div className="shrink-0 border-t bg-card px-4 py-3">
         {isLocked ? (
           <p className="py-1 text-center text-xs text-muted-foreground">
-            This ticket has been resolved and is now read-only.
+            Bu talep çözüldü ve artık salt okunur.
           </p>
         ) : (
           <div className="flex items-end gap-2">
@@ -313,7 +306,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
                   sendMessage();
                 }
               }}
-              placeholder="Type a message… (Shift+Enter for newline)"
+              placeholder="Bir mesaj yazın… (Yeni satır için Shift+Enter)"
               rows={1}
               disabled={sending}
               className={cn(
@@ -329,7 +322,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
               type="button"
               onClick={sendMessage}
               disabled={!draft.trim() || sending}
-              aria-label="Send message"
+              aria-label="Mesaj gönder"
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {sending ? (

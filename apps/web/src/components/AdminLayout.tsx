@@ -61,17 +61,17 @@ export default function AdminLayout() {
           {/* Nav links */}
           <NavLink to="/admin" end className={navClass}>
             <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">Users</span>
+            <span className="hidden sm:inline">Kullanıcılar</span>
           </NavLink>
 
           <NavLink to="/admin/events" className={navClass}>
             <CalendarDays className="h-4 w-4" />
-            <span className="hidden sm:inline">Events</span>
+            <span className="hidden sm:inline">Etkinlikler</span>
           </NavLink>
 
           <NavLink to="/admin/broadcast" className={navClass}>
             <Megaphone className="h-4 w-4" />
-            <span className="hidden sm:inline">Broadcast</span>
+            <span className="hidden sm:inline">Duyuru</span>
           </NavLink>
 
           <NavLink to="/admin/tickets" className={navClass}>
@@ -83,13 +83,13 @@ export default function AdminLayout() {
                 </span>
               )}
             </span>
-            <span className="hidden sm:inline">Tickets</span>
+            <span className="hidden sm:inline">Destek</span>
           </NavLink>
 
           <button
             onClick={toggleTheme}
             className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            aria-label="Toggle visual theme preference"
+            aria-label="Görsel tema tercihini değiştir"
           >
             {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
           </button>
@@ -108,7 +108,7 @@ export default function AdminLayout() {
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Sign out</span>
+            <span className="hidden sm:inline">Çıkış Yap</span>
           </button>
         </div>
       </header>

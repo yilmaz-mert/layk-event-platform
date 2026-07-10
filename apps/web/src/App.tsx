@@ -2,6 +2,7 @@
 import { AuthProvider } from '@layk/core';
 import { ToastProvider } from '@/components/Toast';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import PublicRoute from '@/components/PublicRoute';
 import UserLayout from '@/components/UserLayout';
 import AdminLayout from '@/components/AdminLayout';
 import Login from '@/pages/Login';
@@ -23,12 +24,15 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
 
-            <Route element={<ProtectedRoute allowedRole="user" />}>
-              <Route element={<UserLayout />}>
+            <Route element={<UserLayout />}>
+              <Route element={<PublicRoute />}>
                 <Route path="/" element={<UserFeed />} />
+                <Route path="/events/:id" element={<EventDetails />} />
+              </Route>
+
+              <Route element={<ProtectedRoute allowedRole="user" />}>
                 <Route path="/my-bookings" element={<MyBookings />} />
                 <Route path="/profile" element={<UserProfile />} />
-                <Route path="/events/:id" element={<EventDetails />} />
               </Route>
             </Route>
 

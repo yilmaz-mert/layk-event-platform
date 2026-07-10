@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
@@ -7,13 +7,16 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings2,
   Tag,
   Trash2,
   X,
 } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatDateTime } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
+import Switch from '@/components/Switch';
+import CategoryManagerModal, { type EventCategory } from '@/components/CategoryManagerModal';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,8 +31,13 @@ interface EventRecord {
   capacity: number;
   max_tickets_per_user: number;
   category: string | null;
+  category_id: string | null;
+  price: number;
+  location: string | null;
+  is_published: boolean;
   status: EventStatus;
   created_at: string;
+  event_categories: { name: string; color_code: string } | null;
 }
 
 interface FormState {
@@ -37,7 +45,10 @@ interface FormState {
   description: string;
   event_date: string;
   capacity: string;
-  category: string;
+  category_id: string;
+  price: string;
+  location: string;
+  is_published: boolean;
   image: File | null;
   existingImageUrl: string | null;
   maxTickets: string;
@@ -48,7 +59,10 @@ const EMPTY_FORM: FormState = {
   description: '',
   event_date: '',
   capacity: '',
-  category: '',
+  category_id: '',
+  price: '0',
+  location: '',
+  is_published: true,
   image: null,
   existingImageUrl: null,
   maxTickets: '5',
@@ -60,24 +74,6 @@ const inputClass =
   'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground ' +
   'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ' +
   'focus:ring-offset-1 transition';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso));
-}
-
-function toDatetimeLocalValue(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // ── Skeleton loaders ─────────────────────────────────────────────────────────
 
@@ -121,10 +117,39 @@ const statusStyles: Record<EventStatus, string> = {
   cancelled: 'bg-destructive/10 text-destructive',
 };
 
+const statusLabels: Record<EventStatus, string> = {
+  active: 'Aktif',
+  completed: 'Tamamlandı',
+  cancelled: 'İptal Edildi',
+};
+
 function StatusBadge({ status }: { status: EventStatus }) {
   return (
-    <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold capitalize', statusStyles[status])}>
-      {status}
+    <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', statusStyles[status])}>
+      {statusLabels[status]}
+    </span>
+  );
+}
+
+function DraftBadge() {
+  return (
+    <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-semibold text-yellow-600 dark:text-yellow-400">
+      Taslak
+    </span>
+  );
+}
+
+function CategoryTag({ event }: { event: EventRecord }) {
+  const label = event.event_categories?.name ?? event.category;
+  const color = event.event_categories?.color_code;
+  if (!label) return <span className="text-xs text-muted-foreground/40">—</span>;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+      style={color ? { backgroundColor: `${color}1A`, color } : undefined}
+    >
+      <Tag className="h-3 w-3" />
+      {label}
     </span>
   );
 }
@@ -145,9 +170,9 @@ function StatusSelect({
       onChange={(e) => onChange(e.target.value as EventStatus)}
       className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-wait disabled:opacity-50"
     >
-      <option value="active">Active</option>
-      <option value="completed">Completed</option>
-      <option value="cancelled">Cancelled</option>
+      <option value="active">Aktif</option>
+      <option value="completed">Tamamlandı</option>
+      <option value="cancelled">İptal Edildi</option>
     </select>
   );
 }
@@ -200,21 +225,14 @@ function EventTableRow({
 
       {/* Category */}
       <td className="p-3">
-        {event.category ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Tag className="h-3 w-3" />
-            {event.category}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground/40">—</span>
-        )}
+        <CategoryTag event={event} />
       </td>
 
       {/* Date */}
       <td className="p-3">
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <CalendarDays className="h-3 w-3 shrink-0" />
-          {formatDate(event.event_date)}
+          {formatDateTime(event.event_date)}
         </span>
       </td>
 
@@ -225,11 +243,14 @@ function EventTableRow({
 
       {/* Status select — stopPropagation prevents row navigation */}
       <td className="p-3" onClick={(e) => e.stopPropagation()}>
-        <StatusSelect
-          value={event.status}
-          disabled={updating}
-          onChange={(v) => onStatusChange(event.id, v)}
-        />
+        <div className="flex items-center gap-1.5">
+          <StatusSelect
+            value={event.status}
+            disabled={updating}
+            onChange={(v) => onStatusChange(event.id, v)}
+          />
+          {!event.is_published && <DraftBadge />}
+        </div>
       </td>
 
       {/* Edit + Delete — stopPropagation prevents row navigation */}
@@ -240,7 +261,7 @@ function EventTableRow({
             className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-foreground"
           >
             <Pencil className="h-3 w-3" />
-            Edit
+            Düzenle
           </button>
 
           {canDelete && (
@@ -253,14 +274,14 @@ function EventTableRow({
                     disabled={deleting}
                     className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
                   >
-                    {deleting ? '…' : 'Confirm'}
+                    {deleting ? '…' : 'Onayla'}
                   </button>
                   <span className="text-muted-foreground/40">·</span>
                   <button
                     onClick={() => setConfirmDelete(false)}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
-                    Cancel
+                    Vazgeç
                   </button>
                 </div>
               ) : (
@@ -269,7 +290,7 @@ function EventTableRow({
                   className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-destructive"
                 >
                   <Trash2 className="h-3 w-3" />
-                  Delete
+                  Sil
                 </button>
               )}
             </>
@@ -326,26 +347,22 @@ function EventCard({
             <p className="font-medium text-foreground">{event.title}</p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               <CalendarDays className="h-3 w-3 shrink-0" />
-              {formatDate(event.event_date)}
+              {formatDateTime(event.event_date)}
             </p>
           </div>
           <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/40" />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {event.category && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              <Tag className="h-3 w-3" />
-              {event.category}
-            </span>
-          )}
+          <CategoryTag event={event} />
           <StatusBadge status={event.status} />
-          <span className="text-xs text-muted-foreground">{event.capacity} spots</span>
+          {!event.is_published && <DraftBadge />}
+          <span className="text-xs text-muted-foreground">{event.capacity} kontenjan</span>
         </div>
 
         {/* Status select — stopPropagation prevents card navigation */}
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <span className="text-xs text-muted-foreground">Status:</span>
+          <span className="text-xs text-muted-foreground">Durum:</span>
           <StatusSelect
             value={event.status}
             disabled={updating}
@@ -360,7 +377,7 @@ function EventCard({
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground"
           >
             <Pencil className="h-3 w-3" />
-            Edit event
+            Etkinliği düzenle
           </button>
 
           {canDelete && (
@@ -371,13 +388,13 @@ function EventCard({
                   disabled={deleting}
                   className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
                 >
-                  {deleting ? '…' : 'Confirm delete'}
+                  {deleting ? '…' : 'Silmeyi onayla'}
                 </button>
                 <button
                   onClick={() => setConfirmDelete(false)}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Cancel
+                  Vazgeç
                 </button>
               </div>
             ) : (
@@ -386,7 +403,7 @@ function EventCard({
                 className="flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-destructive"
               >
                 <Trash2 className="h-3 w-3" />
-                Delete event
+                Etkinliği sil
               </button>
             )
           )}
@@ -400,10 +417,12 @@ function EventCard({
 
 function EventModal({
   editEvent,
+  categories,
   onClose,
   onSaved,
 }: {
   editEvent: EventRecord | null;
+  categories: EventCategory[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -417,7 +436,10 @@ function EventModal({
           description: editEvent.description ?? '',
           event_date: toDatetimeLocalValue(editEvent.event_date),
           capacity: editEvent.capacity.toString(),
-          category: editEvent.category ?? '',
+          category_id: editEvent.category_id ?? '',
+          price: editEvent.price.toString(),
+          location: editEvent.location ?? '',
+          is_published: editEvent.is_published,
           image: null,
           existingImageUrl: editEvent.image_url,
           maxTickets: editEvent.max_tickets_per_user.toString(),
@@ -447,6 +469,7 @@ function EventModal({
 
   // The displayed image: a newly selected file blob takes precedence over the DB URL
   const displayedPreview = preview ?? form.existingImageUrl;
+  const selectedCategory = categories.find((c) => c.id === form.category_id) ?? null;
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
@@ -474,10 +497,12 @@ function EventModal({
     e.preventDefault();
     const cap = parseInt(form.capacity, 10);
     const maxTix = parseInt(form.maxTickets, 10);
-    if (!form.title.trim()) return toast.error('Title is required.');
-    if (!form.event_date) return toast.error('Event date is required.');
-    if (isNaN(cap) || cap < 1) return toast.error('Capacity must be a positive number.');
-    if (isNaN(maxTix) || maxTix < 1) return toast.error('Max tickets per user must be at least 1.');
+    const price = parseFloat(form.price);
+    if (!form.title.trim()) return toast.error('Başlık gereklidir.');
+    if (!form.event_date) return toast.error('Etkinlik tarihi gereklidir.');
+    if (isNaN(cap) || cap < 1) return toast.error('Kontenjan pozitif bir sayı olmalıdır.');
+    if (isNaN(maxTix) || maxTix < 1) return toast.error('Kullanıcı başına maksimum bilet en az 1 olmalıdır.');
+    if (isNaN(price) || price < 0) return toast.error('Fiyat geçerli bir sayı olmalıdır.');
 
     setSubmitting(true);
     try {
@@ -511,7 +536,14 @@ function EventModal({
         event_date: new Date(form.event_date).toISOString(),
         capacity: cap,
         max_tickets_per_user: maxTix,
-        category: form.category.trim() || null,
+        // category_id is the new source of truth; `category` (text) is kept
+        // in sync so the 0013 capacity-alert trigger and the user_interests
+        // upsert in EventDetails.tsx keep matching on it unmodified.
+        category_id: form.category_id || null,
+        category: selectedCategory?.name ?? null,
+        price,
+        location: form.location.trim() || null,
+        is_published: form.is_published,
         image_url: imageUrl,
       };
 
@@ -529,13 +561,13 @@ function EventModal({
           .update(payload)
           .eq('id', editEvent.id);
         if (error) throw error;
-        toast.success('Event updated successfully!');
+        toast.success('Etkinlik başarıyla güncellendi!');
       } else {
         const { error } = await supabase
           .from('events')
           .insert({ ...payload, status: 'active' });
         if (error) throw error;
-        toast.success('Event created successfully!');
+        toast.success('Etkinlik başarıyla oluşturuldu!');
       }
 
       onSaved();
@@ -544,7 +576,7 @@ function EventModal({
       toast.error(
         err instanceof Error
           ? err.message
-          : `Failed to ${isEditing ? 'update' : 'create'} event.`,
+          : `Etkinlik ${isEditing ? 'güncellenemedi' : 'oluşturulamadı'}.`,
       );
     } finally {
       setSubmitting(false);
@@ -557,7 +589,7 @@ function EventModal({
       <div className="relative z-10 my-4 w-full max-w-lg rounded-xl border bg-card shadow-xl">
         <div className="flex items-center justify-between border-b px-6 py-4">
           <h2 className="text-base font-semibold text-foreground">
-            {isEditing ? 'Edit Event' : 'Create New Event'}
+            {isEditing ? 'Etkinliği Düzenle' : 'Yeni Etkinlik Oluştur'}
           </h2>
           <button
             type="button"
@@ -571,25 +603,25 @@ function EventModal({
         <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">
-              Title <span className="text-destructive">*</span>
+              Başlık <span className="text-destructive">*</span>
             </label>
             <input
               type="text"
               required
               value={form.title}
               onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-              placeholder="e.g. Future Tech Conference 2026"
+              placeholder="örn. Gelecek Teknoloji Konferansı 2026"
               className={inputClass}
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Description</label>
+            <label className="text-sm font-medium text-foreground">Açıklama</label>
             <textarea
               rows={3}
               value={form.description}
               onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-              placeholder="Brief summary of the event…"
+              placeholder="Etkinliğin kısa özeti…"
               className={cn(inputClass, 'resize-none')}
             />
           </div>
@@ -597,7 +629,7 @@ function EventModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
-                Date & Time <span className="text-destructive">*</span>
+                Tarih ve Saat <span className="text-destructive">*</span>
               </label>
               <input
                 type="datetime-local"
@@ -609,7 +641,7 @@ function EventModal({
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
-                Capacity <span className="text-destructive">*</span>
+                Kontenjan <span className="text-destructive">*</span>
               </label>
               <input
                 type="number"
@@ -623,20 +655,57 @@ function EventModal({
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Fiyat (₺)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.price}
+                onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))}
+                placeholder="0"
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Konum</label>
+              <input
+                type="text"
+                value={form.location}
+                onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
+                placeholder="örn. İstanbul Kongre Merkezi"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Category</label>
-            <input
-              type="text"
-              value={form.category}
-              onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
-              placeholder="e.g. Conference, Workshop"
+            <label className="text-sm font-medium text-foreground">Kategori</label>
+            <select
+              value={form.category_id}
+              onChange={(e) => setForm((p) => ({ ...p, category_id: e.target.value }))}
               className={inputClass}
-            />
+            >
+              <option value="">Kategori seçilmedi</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {selectedCategory && (
+              <span className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: selectedCategory.color_code }}
+                />
+                {selectedCategory.name}
+              </span>
+            )}
           </div>
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">
-              Max Tickets Per User <span className="text-destructive">*</span>
+              Kullanıcı Başına Maksimum Bilet <span className="text-destructive">*</span>
             </label>
             <input
               type="number"
@@ -649,11 +718,18 @@ function EventModal({
             />
           </div>
 
+          <Switch
+            checked={form.is_published}
+            onChange={(v) => setForm((p) => ({ ...p, is_published: v }))}
+            label={form.is_published ? 'Yayınlandı' : 'Taslak'}
+            id="is-published"
+          />
+
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Banner Image</label>
+            <label className="text-sm font-medium text-foreground">Banner Görseli</label>
             {displayedPreview ? (
               <div className="relative overflow-hidden rounded-lg">
-                <img src={displayedPreview} alt="Preview" className="h-36 w-full object-cover" />
+                <img src={displayedPreview} alt="Önizleme" className="h-36 w-full object-cover" />
                 <button
                   type="button"
                   onClick={clearImage}
@@ -666,7 +742,7 @@ function EventModal({
               <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-input px-4 py-8 text-center transition hover:border-primary/50 hover:bg-muted/40">
                 <ImageIcon className="h-8 w-8 text-muted-foreground/50" />
                 <span className="text-sm text-muted-foreground">
-                  {isEditing ? 'Click to upload a new banner image' : 'Click to upload a banner image'}
+                  {isEditing ? 'Yeni bir banner görseli yüklemek için tıklayın' : 'Banner görseli yüklemek için tıklayın'}
                 </span>
                 <span className="text-xs text-muted-foreground/60">PNG, JPG, WEBP</span>
                 <input
@@ -687,7 +763,7 @@ function EventModal({
               disabled={submitting}
               className="rounded-lg border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
             >
-              Cancel
+              Vazgeç
             </button>
             <button
               type="submit"
@@ -695,8 +771,8 @@ function EventModal({
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting
-                ? isEditing ? 'Saving…' : 'Creating…'
-                : isEditing ? 'Save Changes' : 'Create Event'}
+                ? isEditing ? 'Kaydediliyor…' : 'Oluşturuluyor…'
+                : isEditing ? 'Değişiklikleri Kaydet' : 'Etkinlik Oluştur'}
             </button>
           </div>
         </form>
@@ -705,17 +781,32 @@ function EventModal({
   );
 }
 
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 type StatusFilter = 'all' | EventStatus;
+
+const statusFilterLabels: Record<StatusFilter, string> = {
+  all: 'Tümü',
+  active: 'Aktif',
+  cancelled: 'İptal Edildi',
+  completed: 'Tamamlandı',
+};
 
 export default function AdminEvents() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
   const [events, setEvents] = useState<EventRecord[]>([]);
+  const [categories, setCategories] = useState<EventCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -725,40 +816,39 @@ export default function AdminEvents() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function load() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('events')
-        .select('id, title, description, image_url, event_date, capacity, max_tickets_per_user, category, status, created_at')
-        .order('created_at', { ascending: false });
-      if (!isMounted) return;
-      if (error) {
-        toast.error(error.message);
-      } else {
-        setEvents(data ?? []);
-      }
-      setLoading(false);
-    }
-
-    load();
-    return () => { isMounted = false; };
+    fetchEvents();
+    fetchCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const eventSelect =
+    'id, title, description, image_url, event_date, capacity, max_tickets_per_user, category, category_id, price, location, is_published, status, created_at, event_categories(name, color_code)';
 
   async function fetchEvents() {
     setLoading(true);
     const { data, error } = await supabase
       .from('events')
-      .select('id, title, description, image_url, event_date, capacity, max_tickets_per_user, category, status, created_at')
+      .select(eventSelect)
       .order('created_at', { ascending: false });
 
     if (error) {
       toast.error(error.message);
     } else {
-      setEvents(data ?? []);
+      setEvents((data ?? []) as unknown as EventRecord[]);
     }
     setLoading(false);
+  }
+
+  async function fetchCategories() {
+    const { data, error } = await supabase
+      .from('event_categories')
+      .select('id, name, color_code')
+      .order('name');
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setCategories(data ?? []);
+    }
   }
 
   async function handleStatusChange(id: string, newStatus: EventStatus) {
@@ -771,7 +861,7 @@ export default function AdminEvents() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success(`Event marked as "${newStatus}".`);
+      toast.success(`Etkinlik "${statusLabels[newStatus]}" olarak işaretlendi.`);
       setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status: newStatus } : e)));
     }
     setUpdatingStatusId(null);
@@ -794,7 +884,7 @@ export default function AdminEvents() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Event deleted.');
+      toast.success('Etkinlik silindi.');
       setEvents((prev) => prev.filter((e) => e.id !== id));
     }
     setDeletingId(null);
@@ -843,28 +933,39 @@ export default function AdminEvents() {
   return (
     <main className="mx-auto max-w-5xl px-4 pb-16 pt-6">
       {/* Page header */}
-      <div className="mb-5 flex items-center justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Event Management</h1>
+          <h1 className="text-xl font-bold text-foreground">Etkinlik Yönetimi</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {loading ? (
               <span className="inline-block h-4 w-24 animate-pulse rounded bg-muted" />
             ) : isFiltered ? (
-              `${displayedEvents.length} of ${events.length} ${events.length === 1 ? 'event' : 'events'}`
+              `${displayedEvents.length} / ${events.length} etkinlik`
             ) : (
-              `${events.length} ${events.length === 1 ? 'event' : 'events'} total`
+              `${events.length} etkinlik (toplam)`
             )}
           </p>
         </div>
 
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">New Event</span>
-          <span className="sm:hidden">New</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCategoryModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+          >
+            <Settings2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Kategorileri Yönet</span>
+            <span className="sm:hidden">Kategoriler</span>
+          </button>
+
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Yeni Etkinlik</span>
+            <span className="sm:hidden">Yeni</span>
+          </button>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -874,7 +975,7 @@ export default function AdminEvents() {
           type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by title, description, or category…"
+          placeholder="Başlık, açıklama veya kategoriye göre ara…"
           className={
             'w-full rounded-xl border border-input bg-background py-2.5 pl-9 pr-4 text-sm ' +
             'text-foreground placeholder:text-muted-foreground focus:outline-none ' +
@@ -890,13 +991,13 @@ export default function AdminEvents() {
             key={f}
             onClick={() => setStatusFilter(f)}
             className={cn(
-              'rounded-full border px-3 py-1 text-xs font-medium capitalize transition',
+              'rounded-full border px-3 py-1 text-xs font-medium transition',
               statusFilter === f
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
             )}
           >
-            {f === 'all' ? 'All' : f} ({statusCounts[f]})
+            {statusFilterLabels[f]} ({statusCounts[f]})
           </button>
         ))}
       </div>
@@ -906,7 +1007,7 @@ export default function AdminEvents() {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b bg-muted/40">
-              {['', 'Title', 'Category', 'Date', 'Cap.', 'Status', 'Actions', ''].map((h, i) => (
+              {['', 'Başlık', 'Kategori', 'Tarih', 'Kont.', 'Durum', 'İşlemler', ''].map((h, i) => (
                 <th
                   key={i}
                   className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
@@ -936,7 +1037,7 @@ export default function AdminEvents() {
 
         {!loading && displayedEvents.length === 0 && (
           <p className="py-12 text-center text-sm text-muted-foreground">
-            {isFiltered ? 'No events match your filters.' : 'No events yet. Create your first one!'}
+            {isFiltered ? 'Filtrelerinize uyan etkinlik yok.' : 'Henüz etkinlik yok. İlkini oluşturun!'}
           </p>
         )}
       </div>
@@ -948,7 +1049,7 @@ export default function AdminEvents() {
           : displayedEvents.length === 0
             ? (
               <p className="col-span-full py-12 text-center text-sm text-muted-foreground">
-                {isFiltered ? 'No events match your filters.' : 'No events yet. Create your first one!'}
+                {isFiltered ? 'Filtrelerinize uyan etkinlik yok.' : 'Henüz etkinlik yok. İlkini oluşturun!'}
               </p>
             )
             : displayedEvents.map((event) => (
@@ -969,8 +1070,21 @@ export default function AdminEvents() {
       {showModal && (
         <EventModal
           editEvent={editingEvent}
+          categories={categories}
           onClose={closeModal}
           onSaved={fetchEvents}
+        />
+      )}
+
+      {/* Category manager modal */}
+      {showCategoryModal && (
+        <CategoryManagerModal
+          categories={categories}
+          onClose={() => setShowCategoryModal(false)}
+          onChanged={() => {
+            fetchCategories();
+            fetchEvents();
+          }}
         />
       )}
     </main>

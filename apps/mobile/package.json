@@ -8,6 +8,7 @@
     "@layk/core": "*",
     "@react-native-community/datetimepicker": "8.4.4",
     "expo": "~54.0.0",
+    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-image-picker": "~17.0.11",
     "expo-linking": "~8.0.12",

@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Search, Send, X } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatShortDate } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
 
@@ -23,14 +23,6 @@ interface ComboOption {
   id: string;
   label: string;
   sublabel?: string;
-}
-
-function formatEventDate(iso: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(iso));
 }
 
 // ── Searchable combo component ────────────────────────────────────────────────
@@ -140,7 +132,7 @@ function SearchableCombo({
         <button
           type="button"
           onClick={onClear}
-          aria-label="Clear selection"
+          aria-label="Seçimi temizle"
           className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
         >
           <X className="h-3.5 w-3.5" />
@@ -178,7 +170,7 @@ function SearchableCombo({
           tabIndex={-1}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => (open ? closeDropdown() : openDropdown())}
-          aria-label={open ? 'Close list' : 'Open list'}
+          aria-label={open ? 'Listeyi kapat' : 'Listeyi aç'}
           className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:text-foreground"
         >
           <ChevronDown
@@ -199,7 +191,7 @@ function SearchableCombo({
         >
           {filtered.length === 0 ? (
             <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-              {query.trim() ? `No results for "${query}"` : emptyMessage}
+              {query.trim() ? `"${query}" için sonuç yok` : emptyMessage}
             </p>
           ) : (
             filtered.map((o, i) => (
@@ -275,15 +267,15 @@ export default function AdminBroadcast() {
   const eventOptions: ComboOption[] = events.map((ev) => ({
     id: ev.id,
     label: ev.title,
-    sublabel: formatEventDate(ev.event_date),
+    sublabel: formatShortDate(ev.event_date),
   }));
 
   function recipientHint(): string {
     if (targetType === 'all') {
-      return `${approvedUsers.length} approved user${approvedUsers.length !== 1 ? 's' : ''} will receive this.`;
+      return `${approvedUsers.length} onaylı kullanıcı bunu alacak.`;
     }
-    if (targetType === 'specific') return 'One user will receive this.';
-    return 'All confirmed attendees of the selected event will receive this.';
+    if (targetType === 'specific') return 'Bir kullanıcı bunu alacak.';
+    return 'Seçilen etkinliğin tüm onaylı katılımcıları bunu alacak.';
   }
 
   function resetTargets() {
@@ -316,7 +308,7 @@ export default function AdminBroadcast() {
     }
 
     if (recipientIds.length === 0) {
-      toast.error('No recipients found for the selected audience.');
+      toast.error('Seçilen kitle için alıcı bulunamadı.');
       setSending(false);
       return;
     }
@@ -334,11 +326,8 @@ export default function AdminBroadcast() {
       toast.error(error.message);
     } else {
       const count = recipientIds.length;
-      const noun =
-        targetType === 'event_attendees'
-          ? `${count} attendee${count !== 1 ? 's' : ''}`
-          : `${count} user${count !== 1 ? 's' : ''}`;
-      toast.success(`Broadcast sent to ${noun}.`);
+      const noun = targetType === 'event_attendees' ? `${count} katılımcıya` : `${count} kullanıcıya`;
+      toast.success(`Duyuru ${noun} gönderildi.`);
       setTitle('');
       setMessage('');
       resetTargets();
@@ -350,9 +339,9 @@ export default function AdminBroadcast() {
   return (
     <main className="mx-auto max-w-2xl px-4 pb-16 pt-6">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground">Broadcast Center</h1>
+        <h1 className="text-xl font-bold text-foreground">Duyuru Merkezi</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Send targeted notifications to your members.
+          Üyelerinize hedefli bildirimler gönderin.
         </p>
       </div>
 
@@ -361,14 +350,14 @@ export default function AdminBroadcast() {
           {/* Audience selector */}
           <fieldset>
             <legend className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Audience
+              Hedef Kitle
             </legend>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-5">
               {(
                 [
-                  ['all', 'All Approved Users'],
-                  ['specific', 'Specific User'],
-                  ['event_attendees', 'Event Attendees'],
+                  ['all', 'Tüm Onaylı Kullanıcılar'],
+                  ['specific', 'Belirli Bir Kullanıcı'],
+                  ['event_attendees', 'Etkinlik Katılımcıları'],
                 ] as const
               ).map(([value, label]) => (
                 <label key={value} className="flex cursor-pointer items-center gap-2">
@@ -393,13 +382,13 @@ export default function AdminBroadcast() {
           {targetType === 'specific' && (
             <div>
               <p className="mb-1.5 text-xs text-muted-foreground">
-                Search by name or email address
+                Ad veya e-posta adresine göre ara
               </p>
               <SearchableCombo
                 options={userOptions}
                 value={targetUserId}
-                placeholder="Search users…"
-                emptyMessage="No users available"
+                placeholder="Kullanıcı ara…"
+                emptyMessage="Uygun kullanıcı yok"
                 onSelect={setTargetUserId}
                 onClear={() => setTargetUserId('')}
               />
@@ -419,13 +408,13 @@ export default function AdminBroadcast() {
           {targetType === 'event_attendees' && (
             <div>
               <p className="mb-1.5 text-xs text-muted-foreground">
-                Search by event title or date
+                Etkinlik başlığına veya tarihine göre ara
               </p>
               <SearchableCombo
                 options={eventOptions}
                 value={targetEventId}
-                placeholder="Search events…"
-                emptyMessage="No active events"
+                placeholder="Etkinlik ara…"
+                emptyMessage="Aktif etkinlik yok"
                 onSelect={setTargetEventId}
                 onClear={() => setTargetEventId('')}
               />
@@ -445,7 +434,7 @@ export default function AdminBroadcast() {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Notification title"
+            placeholder="Bildirim başlığı"
             required
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
@@ -454,7 +443,7 @@ export default function AdminBroadcast() {
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Write your message…"
+            placeholder="Mesajınızı yazın…"
             required
             rows={4}
             className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -469,7 +458,7 @@ export default function AdminBroadcast() {
               className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
-              {sending ? 'Sending…' : 'Send'}
+              {sending ? 'Gönderiliyor…' : 'Gönder'}
             </button>
           </div>
         </form>

@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 import { MobileAuthProvider, useAuthMobile } from './src/hooks/useAuthMobile';
 import { useMobileRealtimeSync } from './src/hooks/useMobileRealtimeSync';
-import { addNotificationListeners, initPushNotifications, type PushDeepLink } from './src/lib/notifications';
+import { addNotificationListeners, type PushDeepLink } from './src/lib/notifications';
 import Navigator from './src/navigation/Navigator';
 
 // ThemeShell subscribes to colorScheme and owns the root dark-class wrapper.
@@ -34,16 +34,13 @@ function ThemeShell({ children }: { children: ReactNode }) {
 // memo() guard: auth-context updates only re-render this subtree when profile
 // actually changes, not when ThemeShell re-renders for a color-scheme change.
 const AppContent = memo(function AppContent() {
-  const { profile } = useAuthMobile();
   const [deepLink, setDeepLink] = useState<PushDeepLink | null>(null);
 
   useMobileRealtimeSync();
 
-  useEffect(() => {
-    if (profile?.id) {
-      initPushNotifications(profile.id);
-    }
-  }, [profile?.id]);
+  // Push token registration is handled inside useAuthMobile → fetchProfile so
+  // it fires synchronously with every session resolution (initial load, token
+  // refresh, sign-in). No redundant effect needed here.
 
   // Independent of login state: a tap can cold-start the app before profile
   // has loaded, so the listener stores the link and Navigator consumes it

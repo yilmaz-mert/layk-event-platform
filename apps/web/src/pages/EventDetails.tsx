@@ -1,7 +1,7 @@
-﻿import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Tag, Users } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, CalendarDays, MapPin, MessageSquareQuote, Tag, Users } from 'lucide-react';
+import { supabase, formatDateTime, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
@@ -18,7 +18,11 @@ interface Event {
   booked_count: number;
   max_tickets_per_user: number;
   category: string | null;
+  price: number;
+  location: string | null;
+  closing_comment: string | null;
   status: 'active' | 'completed' | 'cancelled';
+  event_categories: { name: string; color_code: string } | null;
 }
 
 interface UserReservation {
@@ -27,24 +31,12 @@ interface UserReservation {
   tickets_requested: number;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso));
-}
-
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function EventDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { profile } = useAuth();
   const { toast } = useToast();
 
@@ -58,36 +50,40 @@ export default function EventDetails() {
   const [showCancelModal, setShowCancelModal] = useState(false);
 
   useEffect(() => {
-    if (id && profile?.id) fetchData(id, profile.id);
+    if (id) fetchData(id, profile?.id);
   }, [id, profile?.id]);
 
   useEffect(() => {
     if (reservation) setSelectedSeats(reservation.tickets_requested);
   }, [reservation]);
 
-  async function fetchData(eventId: string, userId: string) {
+  async function fetchData(eventId: string, userId?: string) {
     setLoading(true);
     setError(null);
 
     const [eventRes, reservationRes] = await Promise.all([
       supabase
         .from('events')
-        .select('id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, status')
+        .select(
+          'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, price, location, closing_comment, status, event_categories(name, color_code)',
+        )
         .eq('id', eventId)
         .single(),
-      supabase
-        .from('reservations')
-        .select('id, status, tickets_requested')
-        .eq('event_id', eventId)
-        .eq('user_id', userId)
-        .eq('status', 'confirmed')
-        .maybeSingle(),
+      userId
+        ? supabase
+            .from('reservations')
+            .select('id, status, tickets_requested')
+            .eq('event_id', eventId)
+            .eq('user_id', userId)
+            .eq('status', 'confirmed')
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null } as const),
     ]);
 
     if (eventRes.error || !eventRes.data) {
-      setError('Event not found.');
+      setError('Etkinlik bulunamadı.');
     } else {
-      setEvent(eventRes.data);
+      setEvent(eventRes.data as unknown as Event);
       setReservation(reservationRes.data ?? null);
       // Fire-and-forget: record category interest so the capacity alert
       // trigger can personalise future notifications for this user.
@@ -114,13 +110,13 @@ export default function EventDetails() {
     if (rpcError) {
       const msg = rpcError.message.toLowerCase();
       toast.error(
-        msg.includes('fully booked') ? 'This event is fully booked.'
-          : msg.includes('already booked') ? 'You already have an active booking for this event.'
-          : msg.includes('exceed') ? 'You cannot book more than the per-user ticket limit.'
+        msg.includes('fully booked') ? 'Bu etkinlik tamamen dolu.'
+          : msg.includes('already booked') ? 'Bu etkinlik için zaten aktif bir rezervasyonunuz var.'
+          : msg.includes('exceed') ? 'Kullanıcı başına bilet limitinden fazla rezervasyon yapamazsınız.'
           : rpcError.message,
       );
     } else {
-      toast.success(`Booking confirmed for ${selectedSeats} ${selectedSeats === 1 ? 'seat' : 'seats'}!`);
+      toast.success(`${selectedSeats} kişilik rezervasyon onaylandı!`);
       await fetchData(event.id, profile.id);
     }
     setBooking(false);
@@ -138,7 +134,7 @@ export default function EventDetails() {
     if (updateError) {
       toast.error(updateError.message);
     } else {
-      toast.success(`Updated to ${selectedSeats} ${selectedSeats === 1 ? 'seat' : 'seats'}.`);
+      toast.success(`${selectedSeats} kişilik olarak güncellendi.`);
       await fetchData(event.id, profile.id);
     }
     setBooking(false);
@@ -156,7 +152,7 @@ export default function EventDetails() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Reservation cancelled successfully.');
+      toast.success('Rezervasyon başarıyla iptal edildi.');
       setShowCancelModal(false);
       await fetchData(event.id, profile.id);
     }
@@ -178,6 +174,8 @@ export default function EventDetails() {
     ? Math.min(event.max_tickets_per_user, Math.max(1, spotsLeft + reservation.tickets_requested))
     : maxSeats;
   const fillPct = event ? Math.min(100, Math.round((event.booked_count / event.capacity) * 100)) : 0;
+  const categoryLabel = event?.event_categories?.name ?? event?.category ?? null;
+  const categoryColor = event?.event_categories?.color_code;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const valueStr = e.target.value;
@@ -231,10 +229,10 @@ export default function EventDetails() {
           className="mb-6 flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back
+          Geri
         </button>
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-8 text-center">
-          <p className="text-sm text-destructive">{error ?? 'Event not found.'}</p>
+          <p className="text-sm text-destructive">{error ?? 'Etkinlik bulunamadı.'}</p>
         </div>
       </main>
     );
@@ -250,7 +248,7 @@ export default function EventDetails() {
         className="mb-6 flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to events
+        Etkinliklere dön
       </Link>
 
       {/* Banner image */}
@@ -271,10 +269,17 @@ export default function EventDetails() {
       {/* Title block */}
       <div className="mb-6 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          {event.category && (
-            <span className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+          {categoryLabel && (
+            <span
+              className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium"
+              style={
+                categoryColor
+                  ? { backgroundColor: `${categoryColor}1A`, color: categoryColor }
+                  : undefined
+              }
+            >
               <Tag className="h-3 w-3" />
-              {event.category}
+              {categoryLabel}
             </span>
           )}
           {event.status !== 'active' && (
@@ -284,7 +289,7 @@ export default function EventDetails() {
                 ? 'bg-muted text-muted-foreground'
                 : 'bg-destructive/10 text-destructive',
             )}>
-              {event.status}
+              {event.status === 'completed' ? 'Tamamlandı' : 'İptal Edildi'}
             </span>
           )}
         </div>
@@ -293,36 +298,61 @@ export default function EventDetails() {
 
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <CalendarDays className="h-4 w-4 shrink-0" />
-          {formatDate(event.event_date)}
+          {formatDateTime(event.event_date, 'long')}
         </div>
+
+        {event.location && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <MapPin className="h-4 w-4 shrink-0" />
+            {event.location}
+          </div>
+        )}
       </div>
 
       {/* Content grid */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Description */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
           {event.description ? (
             <section>
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                About this event
+                Etkinlik hakkında
               </h2>
               <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
                 {event.description}
               </p>
             </section>
           ) : (
-            <p className="text-sm text-muted-foreground">No description provided.</p>
+            <p className="text-sm text-muted-foreground">Açıklama girilmemiş.</p>
+          )}
+
+          {event.status === 'completed' && event.closing_comment && (
+            <section className="rounded-xl border bg-card p-4">
+              <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <MessageSquareQuote className="h-3.5 w-3.5" />
+                Kapanış Notu
+              </h2>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
+                {event.closing_comment}
+              </p>
+            </section>
           )}
         </div>
 
         {/* Booking panel */}
         <div className="space-y-4">
+          {/* Price card */}
+          <div className="rounded-xl border bg-card p-4 text-center">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Fiyat</p>
+            <p className="mt-1 text-2xl font-bold text-primary">{formatPrice(event.price)}</p>
+          </div>
+
           {/* Capacity card */}
           <div className="rounded-xl border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Users className="h-3.5 w-3.5" />
-                Capacity
+                Kontenjan
               </span>
               <span className="text-xs font-semibold text-foreground">
                 {event.booked_count} / {event.capacity}
@@ -343,7 +373,7 @@ export default function EventDetails() {
             </div>
             {!isPast && !isSoldOut && (
               <p className="text-xs text-muted-foreground">
-                {spotsLeft} {spotsLeft === 1 ? 'spot' : 'spots'} remaining
+                {spotsLeft} {spotsLeft === 1 ? 'kontenjan' : 'kontenjan'} kaldı
               </p>
             )}
           </div>
@@ -353,17 +383,17 @@ export default function EventDetails() {
             {!isActive || isPast ? (
               <p className="text-center text-sm text-muted-foreground">
                 {event.status === 'cancelled'
-                  ? 'This event has been cancelled.'
-                  : 'This event has already taken place.'}
+                  ? 'Bu etkinlik iptal edildi.'
+                  : 'Bu etkinlik daha önce gerçekleşti.'}
               </p>
             ) : isConfirmed ? (
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-green-600 dark:text-green-400">
-                  ✓ You&apos;re registered
+                  ✓ Kaydınız alındı
                 </p>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Update seat count
+                    Kişi sayısını güncelle
                   </label>
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
@@ -399,7 +429,7 @@ export default function EventDetails() {
 
                     {selectedSeats > maxSeatsForUpdate && (
                       <p className="animate-pulse text-xs font-medium text-destructive">
-                        Maximum {maxSeatsForUpdate} seats available for this transaction.
+                        Bu işlem için en fazla {maxSeatsForUpdate} kişilik yer mevcut.
                       </p>
                     )}
                   </div>
@@ -410,7 +440,7 @@ export default function EventDetails() {
                   disabled={selectedSeats === reservation!.tickets_requested || selectedSeats > maxSeatsForUpdate || selectedSeats < 1 || booking}
                   className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {booking ? 'Updating…' : 'Update Booking'}
+                  {booking ? 'Güncelleniyor…' : 'Rezervasyonu Güncelle'}
                 </button>
 
                 <button
@@ -418,22 +448,35 @@ export default function EventDetails() {
                   disabled={cancelling || booking}
                   className="w-full rounded-lg border border-destructive/30 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Cancel Reservation
+                  Rezervasyonu İptal Et
                 </button>
+              </div>
+            ) : !profile ? (
+              <div className="space-y-3 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Rezervasyon yapmak için giriş yapmanız gerekiyor.
+                </p>
+                <Link
+                  to="/login"
+                  state={{ from: location }}
+                  className="block w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                >
+                  Giriş Yap
+                </Link>
               </div>
             ) : !isApproved ? (
               <p className="text-center text-sm text-muted-foreground">
-                Your account is pending approval.
+                Hesabınız yönetici onayı bekliyor.
               </p>
             ) : isSoldOut ? (
               <p className="text-center text-sm font-semibold text-destructive">
-                Sold Out
+                Kontenjan Doldu
               </p>
             ) : (
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Number of seats
+                    Kişi sayısı
                   </label>
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
@@ -469,7 +512,7 @@ export default function EventDetails() {
 
                     {selectedSeats > maxSeats && (
                       <p className="animate-pulse text-xs font-medium text-destructive">
-                        Maximum {maxSeats} seats available for this transaction.
+                        Bu işlem için en fazla {maxSeats} kişilik yer mevcut.
                       </p>
                     )}
                   </div>
@@ -481,8 +524,8 @@ export default function EventDetails() {
                   className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {booking
-                    ? 'Booking…'
-                    : `Book ${selectedSeats} ${selectedSeats === 1 ? 'Seat' : 'Seats'}`}
+                    ? 'Rezerve ediliyor…'
+                    : `${selectedSeats} Kişilik Rezervasyon Yap`}
                 </button>
               </div>
             )}
@@ -500,10 +543,10 @@ export default function EventDetails() {
           {/* Dialog */}
           <div className="relative w-full max-w-md rounded-2xl border bg-card p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-foreground">
-              Cancel Reservation
+              Rezervasyonu İptal Et
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Are you sure you want to cancel your reservation for this event? This action will release your seats back into the public pool and cannot be undone.
+              Bu etkinlik için rezervasyonunuzu iptal etmek istediğinizden emin misiniz? Bu işlem yerinizi tekrar genel kontenjana açacak ve geri alınamaz.
             </p>
 
             <div className="mt-5 flex items-center justify-end gap-3">
@@ -513,7 +556,7 @@ export default function EventDetails() {
                 onClick={() => setShowCancelModal(false)}
                 className="rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
               >
-                Keep Reservation
+                Rezervasyonu Koru
               </button>
               <button
                 type="button"
@@ -521,7 +564,7 @@ export default function EventDetails() {
                 onClick={handleCancel}
                 className="flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {cancelling ? 'Cancelling…' : 'Yes, Cancel'}
+                {cancelling ? 'İptal ediliyor…' : 'Evet, İptal Et'}
               </button>
             </div>
           </div>

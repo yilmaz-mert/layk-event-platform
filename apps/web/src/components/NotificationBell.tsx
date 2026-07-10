@@ -21,10 +21,10 @@ function timeAgo(iso: string): string {
   const m = Math.floor(diff / 60_000);
   const h = Math.floor(diff / 3_600_000);
   const d = Math.floor(diff / 86_400_000);
-  if (m < 1) return 'Just now';
-  if (m < 60) return `${m}m ago`;
-  if (h < 24) return `${h}h ago`;
-  return `${d}d ago`;
+  if (m < 1) return 'Az önce';
+  if (m < 60) return `${m} dk önce`;
+  if (h < 24) return `${h} sa önce`;
+  return `${d} gün önce`;
 }
 
 export default function NotificationBell({ userId }: { userId: string }) {
@@ -132,7 +132,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
     setNotifications((prev) => prev.filter((n) => n.id !== notifId));
     const { error } = await supabase.from('notifications').delete().eq('id', notifId);
     if (error) {
-      toast.error('Failed to dismiss notification.');
+      toast.error('Bildirim kaldırılamadı.');
       fetchNotifications();
     }
   }
@@ -147,7 +147,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
       .delete()
       .eq('user_id', userId);
     if (error) {
-      toast.error('Failed to clear notifications.');
+      toast.error('Bildirimler temizlenemedi.');
       fetchNotifications();
     }
     setClearingAll(false);
@@ -164,7 +164,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
       <div ref={dropdownRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-label="Notifications"
+        aria-label="Bildirimler"
         className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <Bell className="h-5 w-5" />
@@ -180,7 +180,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
           {/* Header */}
           <div className="flex items-center justify-between border-b px-4 py-2.5">
             <span className="text-sm font-semibold text-foreground">
-              Notifications
+              Bildirimler
               {notifications.length > 0 && (
                 <span className="ml-1.5 text-xs font-normal text-muted-foreground">
                   ({notifications.length})
@@ -193,7 +193,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
                   onClick={markAllRead}
                   className="text-xs text-primary hover:underline"
                 >
-                  Mark all read
+                  Tümünü okundu işaretle
                 </button>
               )}
               {notifications.length > 0 && (
@@ -203,7 +203,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
                   className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-destructive disabled:opacity-50"
                 >
                   <Trash2 className="h-3 w-3" />
-                  Clear all
+                  Tümünü temizle
                 </button>
               )}
             </div>
@@ -213,7 +213,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
           <div className="max-h-[400px] overflow-y-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {notifications.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                No notifications yet.
+                Henüz bildirim yok.
               </p>
             ) : (
               notifications.map((n) => (
@@ -247,7 +247,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
                   <button
                     type="button"
                     onClick={(e) => handleDismiss(e, n.id)}
-                    aria-label="Dismiss notification"
+                    aria-label="Bildirimi kaldır"
                     className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition hover:bg-muted hover:text-muted-foreground group-hover:opacity-100"
                   >
                     <X className="h-3.5 w-3.5" />

@@ -1,11 +1,15 @@
 ﻿import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 import { supabase } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { cn } from '@layk/core';
 
 type Mode = 'login' | 'signup';
+
+interface LocationState {
+  from?: { pathname: string; search: string };
+}
 
 const inputClass =
   'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground ' +
@@ -14,6 +18,7 @@ const inputClass =
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { session, profile } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
@@ -23,11 +28,20 @@ export default function Login() {
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const from = (location.state as LocationState | null)?.from;
+
+  function resolveDestination(role: 'admin' | 'user') {
+    if (role === 'admin') return '/admin';
+    if (from) return `${from.pathname}${from.search ?? ''}`;
+    return '/';
+  }
+
   // Redirect already-authenticated approved users away from the login page
   useEffect(() => {
     if (session && profile && profile.approval_status === 'approved') {
-      navigate(profile.role === 'admin' ? '/admin' : '/', { replace: true });
+      navigate(resolveDestination(profile.role), { replace: true });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, profile, navigate]);
 
   function switchMode(next: Mode) {
@@ -54,7 +68,7 @@ export default function Login() {
         });
         if (error) throw error;
         setMessage({
-          text: 'Account created successfully! Please wait for an administrator to approve your account before signing in.',
+          text: 'Hesabınız oluşturuldu! Giriş yapabilmeniz için lütfen bir yöneticinin hesabınızı onaylamasını bekleyin.',
           ok: true,
         });
       } else {
@@ -74,17 +88,17 @@ export default function Login() {
           await supabase.auth.signOut();
           setAccessDenied(
             profile.approval_status === 'rejected'
-              ? 'Your account application has been rejected.'
-              : 'Login failed: Your account is pending administrator approval.',
+              ? 'Hesap başvurunuz reddedildi.'
+              : 'Giriş başarısız: Hesabınız yönetici onayı bekliyor.',
           );
           return;
         }
 
-        navigate(profile?.role === 'admin' ? '/admin' : '/', { replace: true });
+        navigate(resolveDestination(profile?.role === 'admin' ? 'admin' : 'user'), { replace: true });
       }
     } catch (err: unknown) {
       setMessage({
-        text: err instanceof Error ? err.message : 'An unexpected error occurred.',
+        text: err instanceof Error ? err.message : 'Beklenmeyen bir hata oluştu.',
         ok: false,
       });
     } finally {
@@ -98,7 +112,7 @@ export default function Login() {
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">L&apos;Ayk</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {mode === 'login' ? 'Sign in to your account' : 'Create a new account'}
+            {mode === 'login' ? 'Hesabınıza giriş yapın' : 'Yeni bir hesap oluşturun'}
           </p>
         </div>
 
@@ -107,7 +121,7 @@ export default function Login() {
             <div className="mb-6 flex gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
               <div>
-                <p className="text-sm font-semibold text-destructive">Access Denied</p>
+                <p className="text-sm font-semibold text-destructive">Erişim Reddedildi</p>
                 <p className="mt-0.5 text-sm text-destructive/90">{accessDenied}</p>
               </div>
             </div>
@@ -117,7 +131,7 @@ export default function Login() {
             {mode === 'signup' && (
               <div className="space-y-1.5">
                 <label htmlFor="fullName" className="text-sm font-medium text-foreground">
-                  Full Name
+                  Ad Soyad
                 </label>
                 <input
                   id="fullName"
@@ -125,7 +139,7 @@ export default function Login() {
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Jane Doe"
+                  placeholder="Ayşe Yılmaz"
                   className={inputClass}
                 />
               </div>
@@ -133,7 +147,7 @@ export default function Login() {
 
             <div className="space-y-1.5">
               <label htmlFor="email" className="text-sm font-medium text-foreground">
-                Email
+                E-posta
               </label>
               <input
                 id="email"
@@ -141,14 +155,14 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="siz@ornek.com"
                 className={inputClass}
               />
             </div>
 
             <div className="space-y-1.5">
               <label htmlFor="password" className="text-sm font-medium text-foreground">
-                Password
+                Şifre
               </label>
               <input
                 id="password"
@@ -181,21 +195,21 @@ export default function Login() {
               className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading
-                ? 'Please wait…'
+                ? 'Lütfen bekleyin…'
                 : mode === 'login'
-                  ? 'Sign In'
-                  : 'Create Account'}
+                  ? 'Giriş Yap'
+                  : 'Hesap Oluştur'}
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
+            {mode === 'login' ? 'Hesabınız yok mu?' : 'Zaten bir hesabınız var mı?'}{' '}
             <button
               type="button"
               onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
-              {mode === 'login' ? 'Sign up' : 'Sign in'}
+              {mode === 'login' ? 'Kayıt olun' : 'Giriş yapın'}
             </button>
           </p>
         </div>

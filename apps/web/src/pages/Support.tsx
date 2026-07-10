@@ -1,18 +1,10 @@
 ﻿import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { LifeBuoy, Loader2, MessageCircle, Plus, X } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatShortDate } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
 import TicketChat, { type SupportTicket } from '@/components/TicketChat';
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(iso));
-}
 
 export default function Support() {
   const { profile } = useAuth();
@@ -102,7 +94,7 @@ export default function Support() {
         <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-2">
             <LifeBuoy className="h-4 w-4 text-primary" />
-            <h1 className="font-semibold text-foreground">Support</h1>
+            <h1 className="font-semibold text-foreground">Destek</h1>
           </div>
           <button
             type="button"
@@ -118,7 +110,7 @@ export default function Support() {
             )}
           >
             {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {showForm ? 'Cancel' : 'New Ticket'}
+            {showForm ? 'Vazgeç' : 'Yeni Talep'}
           </button>
         </div>
 
@@ -130,7 +122,7 @@ export default function Support() {
                 autoFocus
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Describe your issue briefly…"
+                placeholder="Sorununuzu kısaca açıklayın…"
                 required
                 maxLength={200}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -140,7 +132,7 @@ export default function Support() {
                 disabled={creating || !subject.trim()}
                 className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {creating ? 'Opening…' : 'Open Ticket'}
+                {creating ? 'Açılıyor…' : 'Talep Aç'}
               </button>
             </form>
           </div>
@@ -155,9 +147,9 @@ export default function Support() {
           ) : tickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
               <MessageCircle className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-muted-foreground">No support tickets yet</p>
+              <p className="text-sm font-medium text-muted-foreground">Henüz destek talebi yok</p>
               <p className="text-xs text-muted-foreground/60">
-                Click &quot;New Ticket&quot; to contact support.
+                Destek ile iletişime geçmek için &quot;Yeni Talep&quot;e tıklayın.
               </p>
             </div>
           ) : (
@@ -174,7 +166,7 @@ export default function Support() {
                 <p className="truncate text-sm font-medium text-foreground">{ticket.subject}</p>
                 <div className="mt-0.5 flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {formatDate(ticket.created_at)}
+                    {formatShortDate(ticket.created_at)}
                   </span>
                   <span
                     className={cn(
@@ -184,7 +176,7 @@ export default function Support() {
                         : 'bg-muted text-muted-foreground',
                     )}
                   >
-                    {ticket.status === 'open' ? 'Open' : 'Resolved'}
+                    {ticket.status === 'open' ? 'Açık' : 'Çözüldü'}
                   </span>
                 </div>
               </button>
@@ -209,7 +201,7 @@ export default function Support() {
         <div className="hidden flex-1 flex-col items-center justify-center gap-2 text-center md:flex">
           <LifeBuoy className="h-10 w-10 text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">
-            Select a ticket to view the conversation
+            Görüntülemek için bir talep seçin
           </p>
         </div>
       )}

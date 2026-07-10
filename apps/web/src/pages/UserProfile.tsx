@@ -1,24 +1,17 @@
-﻿import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LifeBuoy, Loader2, MessageCircle, Plus, User, X } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatShortDate } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
+import Switch from '@/components/Switch';
 import TicketChat, { type SupportTicket } from '@/components/TicketChat';
 
 const inputClass =
   'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground ' +
   'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ' +
   'focus:ring-offset-1 transition';
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(iso));
-}
 
 export default function UserProfile() {
   const { profile } = useAuth();
@@ -30,6 +23,8 @@ export default function UserProfile() {
   // ── Profile form state ─────────────────────────────────────────────────────
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [address, setAddress] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -51,12 +46,14 @@ export default function UserProfile() {
   async function fetchProfile(userId: string) {
     const { data } = await supabase
       .from('users')
-      .select('full_name, phone_number')
+      .select('full_name, phone_number, address, is_private')
       .eq('id', userId)
       .single();
     if (data) {
       setFullName(data.full_name ?? '');
       setPhoneNumber(data.phone_number ?? '');
+      setAddress(data.address ?? '');
+      setIsPrivate(data.is_private ?? false);
     }
     setProfileLoading(false);
   }
@@ -68,10 +65,16 @@ export default function UserProfile() {
 
     const trimmedName = fullName.trim() || null;
     const trimmedPhone = phoneNumber.trim() || null;
+    const trimmedAddress = address.trim() || null;
 
     const { error } = await supabase
       .from('users')
-      .update({ full_name: trimmedName, phone_number: trimmedPhone })
+      .update({
+        full_name: trimmedName,
+        phone_number: trimmedPhone,
+        address: trimmedAddress,
+        is_private: isPrivate,
+      })
       .eq('id', profile.id);
 
     if (error) {
@@ -82,7 +85,7 @@ export default function UserProfile() {
 
     await supabase.auth.updateUser({ data: { full_name: trimmedName, phone_number: trimmedPhone } });
     await fetchProfile(profile.id);
-    toast.success('Profile updated.');
+    toast.success('Profil güncellendi.');
     setSaving(false);
   }
 
@@ -183,7 +186,7 @@ export default function UserProfile() {
         </div>
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-foreground">
-            {activeTab === 'support' ? 'Support Tickets' : 'My Profile'}
+            {activeTab === 'support' ? 'Destek Talepleri' : 'Profilim'}
           </h1>
           <p className="truncate text-sm text-muted-foreground">{profile?.email}</p>
         </div>
@@ -202,7 +205,7 @@ export default function UserProfile() {
           )}
         >
           <User className="h-4 w-4" />
-          My Profile
+          Profilim
         </button>
         <button
           type="button"
@@ -215,7 +218,7 @@ export default function UserProfile() {
           )}
         >
           <LifeBuoy className="h-4 w-4" />
-          Support Tickets
+          Destek Talepleri
         </button>
       </div>
 
@@ -235,36 +238,54 @@ export default function UserProfile() {
           ) : (
             <form onSubmit={handleSave} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Full Name</label>
+                <label className="text-sm font-medium text-foreground">Ad Soyad</label>
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Your full name"
+                  placeholder="Adınız Soyadınız"
                   className={inputClass}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Phone Number</label>
+                <label className="text-sm font-medium text-foreground">Telefon Numarası</label>
                 <input
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="+1 (555) 000-0000"
+                  placeholder="+90 555 000 00 00"
                   className={inputClass}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Email</label>
+                <label className="text-sm font-medium text-foreground">Adres</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Hediye teslimatı için adresiniz"
+                  className={inputClass}
+                />
+              </div>
+
+              <Switch
+                checked={isPrivate}
+                onChange={setIsPrivate}
+                id="is-private"
+                label="Gizli Hesap: Etkinlik katılımlarımı gizle"
+              />
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">E-posta</label>
                 <input
                   type="email"
                   value={profile?.email ?? ''}
                   disabled
                   className={cn(inputClass, 'cursor-not-allowed opacity-60')}
                 />
-                <p className="text-xs text-muted-foreground">Email cannot be changed here.</p>
+                <p className="text-xs text-muted-foreground">E-posta buradan değiştirilemez.</p>
               </div>
 
               <div className="border-t pt-4">
@@ -273,7 +294,7 @@ export default function UserProfile() {
                   disabled={saving}
                   className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {saving ? 'Saving…' : 'Save Changes'}
+                  {saving ? 'Kaydediliyor…' : 'Değişiklikleri Kaydet'}
                 </button>
               </div>
             </form>
@@ -295,7 +316,7 @@ export default function UserProfile() {
           >
             {/* List header */}
             <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
-              <span className="text-sm font-semibold text-foreground">My Tickets</span>
+              <span className="text-sm font-semibold text-foreground">Taleplerim</span>
               <button
                 type="button"
                 onClick={() => { setShowForm((v) => !v); setSubject(''); }}
@@ -307,7 +328,7 @@ export default function UserProfile() {
                 )}
               >
                 {showForm ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                {showForm ? 'Cancel' : 'New'}
+                {showForm ? 'Vazgeç' : 'Yeni'}
               </button>
             </div>
 
@@ -319,7 +340,7 @@ export default function UserProfile() {
                     autoFocus
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    placeholder="Describe your issue…"
+                    placeholder="Sorununuzu açıklayın…"
                     required
                     maxLength={200}
                     className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -329,7 +350,7 @@ export default function UserProfile() {
                     disabled={creating || !subject.trim()}
                     className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {creating ? 'Opening…' : 'Open Ticket'}
+                    {creating ? 'Açılıyor…' : 'Talep Aç'}
                   </button>
                 </form>
               </div>
@@ -344,9 +365,9 @@ export default function UserProfile() {
               ) : tickets.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center">
                   <MessageCircle className="h-7 w-7 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">No tickets yet</p>
+                  <p className="text-sm text-muted-foreground">Henüz talep yok</p>
                   <p className="text-xs text-muted-foreground/60">
-                    Click &quot;New&quot; to open one.
+                    Yeni bir talep açmak için &quot;Yeni&quot;ye tıklayın.
                   </p>
                 </div>
               ) : (
@@ -365,7 +386,7 @@ export default function UserProfile() {
                     </p>
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(ticket.created_at)}
+                        {formatShortDate(ticket.created_at)}
                       </span>
                       <span
                         className={cn(
@@ -375,7 +396,7 @@ export default function UserProfile() {
                             : 'bg-muted text-muted-foreground',
                         )}
                       >
-                        {ticket.status === 'open' ? 'Open' : 'Resolved'}
+                        {ticket.status === 'open' ? 'Açık' : 'Çözüldü'}
                       </span>
                     </div>
                   </button>
@@ -400,7 +421,7 @@ export default function UserProfile() {
             <div className="hidden flex-1 flex-col items-center justify-center gap-2 text-center md:flex">
               <LifeBuoy className="h-8 w-8 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">
-                Select a ticket to view the conversation
+                Görüntülemek için bir talep seçin
               </p>
             </div>
           )}

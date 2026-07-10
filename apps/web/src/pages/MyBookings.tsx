@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bookmark, CalendarDays, Tag } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { supabase, formatDateTime } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
 
@@ -11,8 +11,8 @@ interface BookedEvent {
   id: string;
   title: string;
   image_url: string | null;
-  event_date: string;
   category: string | null;
+  event_date: string;
   status: string;
   booked_count: number;
   capacity: number;
@@ -25,19 +25,6 @@ interface Reservation {
   created_at: string;
   tickets_requested: number;
   events: BookedEvent | null;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso));
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -101,7 +88,7 @@ function BookingCard({
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <CalendarDays className="h-3 w-3 shrink-0" />
-                {formatDate(event.event_date)}
+                {formatDateTime(event.event_date, 'short')}
               </span>
               {event.category && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -115,8 +102,8 @@ function BookingCard({
           {isPast && (
             <span className="self-start rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
               {reservation.tickets_requested > 1
-                ? `${reservation.tickets_requested} tickets`
-                : 'Completed'}
+                ? `${reservation.tickets_requested} kişi`
+                : 'Tamamlandı'}
             </span>
           )}
         </div>
@@ -163,7 +150,7 @@ export default function MyBookings() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      toast.error('Failed to load your bookings.');
+      toast.error('Rezervasyonlarınız yüklenemedi.');
     } else {
       setReservations((data ?? []) as unknown as Reservation[]);
     }
@@ -191,7 +178,7 @@ export default function MyBookings() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 pb-16 pt-6">
-      <h1 className="mb-6 text-xl font-bold text-foreground">My Bookings</h1>
+      <h1 className="mb-6 text-xl font-bold text-foreground">Rezervasyonlarım</h1>
 
       {loading && (
         <div className="space-y-3">
@@ -202,9 +189,9 @@ export default function MyBookings() {
       {!loading && reservations.length === 0 && (
         <div className="rounded-xl border border-dashed p-12 text-center">
           <Bookmark className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
-          <p className="text-sm font-medium text-foreground">No bookings yet</p>
+          <p className="text-sm font-medium text-foreground">Henüz rezervasyon yok</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Events you book will appear here.
+            Rezerve ettiğiniz etkinlikler burada görünecek.
           </p>
         </div>
       )}
@@ -214,7 +201,7 @@ export default function MyBookings() {
           {upcoming.length > 0 && (
             <section>
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Upcoming
+                Yaklaşan
               </h2>
               <div className="space-y-3">
                 {upcoming.map((r) => (
@@ -230,7 +217,7 @@ export default function MyBookings() {
           {past.length > 0 && (
             <section className={cn(upcoming.length > 0 && 'mt-8')}>
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Past
+                Geçmiş
               </h2>
               <div className="space-y-3">
                 {past.map((r) => <BookingCard key={r.id} reservation={r} isPast />)}

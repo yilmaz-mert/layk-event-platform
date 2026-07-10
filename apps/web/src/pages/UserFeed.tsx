@@ -1,7 +1,7 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, Search, Tag } from 'lucide-react';
-import { supabase } from '@layk/core';
+import { CalendarDays, MapPin, Search, Tag } from 'lucide-react';
+import { supabase, formatDateTime, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { cn } from '@layk/core';
 
@@ -16,20 +16,10 @@ interface Event {
   capacity: number;
   booked_count: number;
   category: string | null;
+  price: number;
+  location: string | null;
   status: 'active' | 'completed' | 'cancelled';
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso));
+  event_categories: { name: string; color_code: string } | null;
 }
 
 // ── Skeleton card ─────────────────────────────────────────────────────────────
@@ -57,13 +47,16 @@ function SkeletonCard() {
 interface EventCardProps {
   event: Event;
   isBooked: boolean;
+  isGuest: boolean;
   isApproved: boolean;
   isPast?: boolean;
 }
 
-function EventCard({ event, isBooked, isApproved, isPast = false }: EventCardProps) {
+function EventCard({ event, isBooked, isGuest, isApproved, isPast = false }: EventCardProps) {
   const spotsLeft = event.capacity - event.booked_count;
   const isSoldOut = spotsLeft <= 0;
+  const categoryLabel = event.event_categories?.name ?? event.category;
+  const categoryColor = event.event_categories?.color_code;
 
   return (
     <Link
@@ -84,7 +77,7 @@ function EventCard({ event, isBooked, isApproved, isPast = false }: EventCardPro
           {isPast && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/60">
               <span className="rounded-full border bg-background px-3 py-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                Completed
+                Tamamlandı
               </span>
             </div>
           )}
@@ -98,10 +91,13 @@ function EventCard({ event, isBooked, isApproved, isPast = false }: EventCardPro
       <div className="flex flex-1 flex-col space-y-3 p-4">
         {/* Category + spots row */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          {event.category ? (
-            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+          {categoryLabel ? (
+            <span
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+              style={categoryColor ? { backgroundColor: `${categoryColor}1A`, color: categoryColor } : undefined}
+            >
               <Tag className="h-3 w-3" />
-              {event.category}
+              {categoryLabel}
             </span>
           ) : (
             <span />
@@ -110,11 +106,11 @@ function EventCard({ event, isBooked, isApproved, isPast = false }: EventCardPro
           {!isPast && (
             isSoldOut ? (
               <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-semibold text-destructive">
-                Sold Out
+                Kontenjan Doldu
               </span>
             ) : (
               <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                {spotsLeft} {spotsLeft === 1 ? 'spot' : 'spots'} left
+                {spotsLeft} kontenjan kaldı
               </span>
             )
           )}
@@ -122,9 +118,22 @@ function EventCard({ event, isBooked, isApproved, isPast = false }: EventCardPro
 
         <h3 className="font-semibold leading-snug text-foreground">{event.title}</h3>
 
+        {/* Location + price row */}
+        <div className="flex items-center justify-between gap-2">
+          {event.location ? (
+            <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{event.location}</span>
+            </span>
+          ) : <span />}
+          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-sm font-bold text-primary">
+            {formatPrice(event.price)}
+          </span>
+        </div>
+
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-          {formatDate(event.event_date)}
+          {formatDateTime(event.event_date, 'short')}
         </div>
 
         {event.description && (
@@ -135,19 +144,23 @@ function EventCard({ event, isBooked, isApproved, isPast = false }: EventCardPro
         <div className="mt-auto pt-1">
           {isPast ? null : isBooked ? (
             <div className="rounded-lg bg-green-500/10 px-4 py-2 text-center text-sm font-medium text-green-600 dark:text-green-400">
-              ✓ You&apos;re registered
+              ✓ Kaydınız alındı
+            </div>
+          ) : isGuest ? (
+            <div className="w-full rounded-lg bg-primary px-4 py-2 text-center text-sm font-semibold text-primary-foreground">
+              Rezervasyon Yap →
             </div>
           ) : !isApproved ? (
             <div className="rounded-lg border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
-              Pending Approval
+              Onay Bekleniyor
             </div>
           ) : isSoldOut ? (
             <div className="rounded-lg bg-muted px-4 py-2 text-center text-sm font-semibold text-muted-foreground">
-              Sold Out
+              Kontenjan Doldu
             </div>
           ) : (
             <div className="w-full rounded-lg bg-primary px-4 py-2 text-center text-sm font-semibold text-primary-foreground">
-              Book Now →
+              Rezervasyon Yap →
             </div>
           )}
         </div>
@@ -172,6 +185,9 @@ export default function UserFeed() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const categoryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  const eventSelect =
+    'id, title, description, image_url, event_date, capacity, booked_count, category, price, location, status, event_categories(name, color_code)';
+
   useEffect(() => {
     let isMounted = true;
 
@@ -182,20 +198,19 @@ export default function UserFeed() {
         const [eventsRes, reservationsRes] = await Promise.all([
           supabase
             .from('events')
-            .select('id, title, description, image_url, event_date, capacity, booked_count, category, status')
+            .select(eventSelect)
             .in('status', ['active', 'completed'])
             .order('event_date', { ascending: true }),
-          supabase
-            .from('reservations')
-            .select('event_id')
-            .eq('status', 'confirmed'),
+          profile?.id
+            ? supabase.from('reservations').select('event_id').eq('status', 'confirmed')
+            : Promise.resolve({ data: [], error: null } as const),
         ]);
         if (!isMounted) return;
         if (eventsRes.error) throw eventsRes.error;
-        setEvents(eventsRes.data ?? []);
+        setEvents((eventsRes.data ?? []) as unknown as Event[]);
         setMyReservations(new Set(reservationsRes.data?.map((r) => r.event_id) ?? []));
       } catch (err: unknown) {
-        if (isMounted) setError(err instanceof Error ? err.message : 'Failed to load events.');
+        if (isMounted) setError(err instanceof Error ? err.message : 'Etkinlikler yüklenemedi.');
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -203,7 +218,7 @@ export default function UserFeed() {
 
     load();
     return () => { isMounted = false; };
-  }, []);
+  }, [profile?.id]);
 
   async function fetchData() {
     setLoading(true);
@@ -212,19 +227,18 @@ export default function UserFeed() {
       const [eventsRes, reservationsRes] = await Promise.all([
         supabase
           .from('events')
-          .select('id, title, description, image_url, event_date, capacity, booked_count, category, status')
+          .select(eventSelect)
           .in('status', ['active', 'completed'])
           .order('event_date', { ascending: true }),
-        supabase
-          .from('reservations')
-          .select('event_id')
-          .eq('status', 'confirmed'),
+        profile?.id
+          ? supabase.from('reservations').select('event_id').eq('status', 'confirmed')
+          : Promise.resolve({ data: [], error: null } as const),
       ]);
       if (eventsRes.error) throw eventsRes.error;
-      setEvents(eventsRes.data ?? []);
+      setEvents((eventsRes.data ?? []) as unknown as Event[]);
       setMyReservations(new Set(reservationsRes.data?.map((r) => r.event_id) ?? []));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load events.');
+      setError(err instanceof Error ? err.message : 'Etkinlikler yüklenemedi.');
     } finally {
       setLoading(false);
     }
@@ -233,11 +247,16 @@ export default function UserFeed() {
   // ── Derived data ──────────────────────────────────────────────────────────
 
   const now = new Date();
+  const isGuest = !profile;
 
   const categories = [
     'All',
     ...Array.from(
-      new Set(events.map((e) => e.category).filter((c): c is string => Boolean(c))),
+      new Set(
+        events
+          .map((e) => e.event_categories?.name ?? e.category)
+          .filter((c): c is string => Boolean(c)),
+      ),
     ),
   ];
 
@@ -266,7 +285,8 @@ export default function UserFeed() {
   const searchLower = searchQuery.toLowerCase().trim();
 
   const filtered = events.filter((e) => {
-    const categoryMatch = selectedCategory === 'All' || e.category === selectedCategory;
+    const eventCategory = e.event_categories?.name ?? e.category;
+    const categoryMatch = selectedCategory === 'All' || eventCategory === selectedCategory;
     const searchMatch =
       !searchLower ||
       e.title.toLowerCase().includes(searchLower) ||
@@ -291,7 +311,7 @@ export default function UserFeed() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search events by title or description…"
+            placeholder="Başlık veya açıklamaya göre etkinlik ara…"
             className={
               'w-full rounded-xl border border-input bg-background py-2.5 pl-9 pr-4 text-sm ' +
               'text-foreground placeholder:text-muted-foreground focus:outline-none ' +
@@ -335,7 +355,7 @@ export default function UserFeed() {
                       : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
                   )}
                 >
-                  {cat}
+                  {cat === 'All' ? 'Tümü' : cat}
                 </button>
               ))}
             </div>
@@ -366,7 +386,7 @@ export default function UserFeed() {
             onClick={fetchData}
             className="mt-3 text-sm text-primary underline-offset-4 hover:underline"
           >
-            Try again
+            Tekrar dene
           </button>
         </div>
       )}
@@ -376,15 +396,15 @@ export default function UserFeed() {
         <>
           <section>
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Upcoming Events
+              Yaklaşan Etkinlikler
             </h2>
             {upcoming.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 {searchQuery
-                  ? `No upcoming events match "${searchQuery}".`
+                  ? `"${searchQuery}" ile eşleşen yaklaşan etkinlik yok.`
                   : selectedCategory !== 'All'
-                    ? `No upcoming events in "${selectedCategory}".`
-                    : 'No upcoming events.'}
+                    ? `"${selectedCategory}" kategorisinde yaklaşan etkinlik yok.`
+                    : 'Yaklaşan etkinlik yok.'}
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -393,6 +413,7 @@ export default function UserFeed() {
                     key={event.id}
                     event={event}
                     isBooked={myReservations.has(event.id)}
+                    isGuest={isGuest}
                     isApproved={isApproved}
                   />
                 ))}
@@ -403,7 +424,7 @@ export default function UserFeed() {
           {past.length > 0 && (
             <section className="mt-12">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Past Events
+                Geçmiş Etkinlikler
               </h2>
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
                 {past.map((event) => (
@@ -411,6 +432,7 @@ export default function UserFeed() {
                     key={event.id}
                     event={event}
                     isBooked={myReservations.has(event.id)}
+                    isGuest={isGuest}
                     isApproved={isApproved}
                     isPast
                   />
