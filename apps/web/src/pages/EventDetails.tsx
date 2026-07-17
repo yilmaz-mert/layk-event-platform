@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Lock, MapPin, MessageSquareQuote, Tag, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Lock, MapPin, MessageSquareQuote, Search, Tag, Users, X } from 'lucide-react';
 import { supabase, formatDateTime, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
+import AvatarBubble from '@/components/AvatarBubble';
 import { cn } from '@layk/core';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -37,6 +38,115 @@ interface PublicAttendee {
   avatar_url: string | null;
 }
 
+// ── Attendee stack + modal ──────────────────────────────────────────────────
+
+const ATTENDEE_STACK_LIMIT = 5;
+
+function AttendeeStack({ attendees, onOpen }: { attendees: PublicAttendee[]; onOpen: () => void }) {
+  const visible = attendees.slice(0, ATTENDEE_STACK_LIMIT);
+  const remainder = attendees.length - visible.length;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex items-center gap-3 rounded-xl p-1 text-left transition hover:bg-muted/50"
+    >
+      <div className="flex -space-x-3 overflow-hidden">
+        {visible.map((a) => (
+          <AvatarBubble
+            key={a.id}
+            avatarUrl={a.avatar_url}
+            fullName={a.full_name}
+            size={40}
+            className="ring-2 ring-background transition-transform duration-200 group-hover:-translate-y-0.5"
+          />
+        ))}
+        {remainder > 0 && (
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground ring-2 ring-background transition-transform duration-200 group-hover:-translate-y-0.5">
+            +{remainder > 99 ? '99+' : remainder}
+          </div>
+        )}
+      </div>
+      <span className="text-sm font-medium text-muted-foreground transition group-hover:text-foreground">
+        {attendees.length} kişi · Tümünü gör
+      </span>
+    </button>
+  );
+}
+
+function AttendeesModal({ attendees, onClose }: { attendees: PublicAttendee[]; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const queryLower = query.toLowerCase().trim();
+  const filtered = attendees.filter((a) =>
+    (a.full_name ?? 'İsimsiz').toLowerCase().includes(queryLower),
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+      <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 my-4 w-full max-w-md rounded-xl border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b px-6 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Katılımcılar</h2>
+            <p className="text-xs text-muted-foreground">{attendees.length} kişi katılıyor</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="border-b px-6 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              autoFocus
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="İsme göre ara…"
+              className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+        </div>
+
+        <div className="max-h-[400px] overflow-y-auto px-3 py-2">
+          {filtered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Eşleşen katılımcı bulunamadı.
+            </p>
+          ) : (
+            <div className="space-y-1">
+              {filtered.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 transition hover:bg-muted/50"
+                >
+                  <AvatarBubble avatarUrl={a.avatar_url} fullName={a.full_name} size={36} />
+                  <span className="truncate text-sm text-foreground">{a.full_name ?? 'İsimsiz'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function EventDetails() {
@@ -56,6 +166,7 @@ export default function EventDetails() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [attendees, setAttendees] = useState<PublicAttendee[]>([]);
   const [attendeesLoading, setAttendeesLoading] = useState(false);
+  const [showAttendeesModal, setShowAttendeesModal] = useState(false);
 
   useEffect(() => {
     if (id) fetchData(id, profile?.id);
@@ -608,28 +719,13 @@ export default function EventDetails() {
             Henüz herkese açık katılımcı bulunmuyor.
           </p>
         ) : (
-          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
-            {attendees.map((a) => (
-              <div key={a.id} className="flex flex-col items-center gap-1.5 text-center">
-                {a.avatar_url ? (
-                  <img
-                    src={a.avatar_url}
-                    alt={a.full_name ?? ''}
-                    className="h-12 w-12 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                    {(a.full_name ?? '?').trim().charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <span className="line-clamp-1 w-full text-xs text-foreground">
-                  {a.full_name ?? 'İsimsiz'}
-                </span>
-              </div>
-            ))}
-          </div>
+          <AttendeeStack attendees={attendees} onOpen={() => setShowAttendeesModal(true)} />
         )}
       </section>
+
+      {showAttendeesModal && (
+        <AttendeesModal attendees={attendees} onClose={() => setShowAttendeesModal(false)} />
+      )}
 
       {showCancelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Archive,
+  ArchiveRestore,
   CalendarDays,
   ChevronRight,
   ImageIcon,
@@ -9,7 +11,6 @@ import {
   Search,
   Settings2,
   Tag,
-  Trash2,
   X,
 } from 'lucide-react';
 import { supabase, formatDateTime } from '@layk/core';
@@ -35,6 +36,7 @@ interface EventRecord {
   price: number;
   location: string | null;
   is_published: boolean;
+  is_archived: boolean;
   status: EventStatus;
   created_at: string;
   event_categories: { name: string; color_code: string } | null;
@@ -131,14 +133,22 @@ function StatusBadge({ status }: { status: EventStatus }) {
   );
 }
 
-function PublishBadge({ published }: { published: boolean }) {
+function VisibilityBadge({ published, archived }: { published: boolean; archived: boolean }) {
+  if (archived) {
+    return (
+      <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+        <Archive className="h-3 w-3" />
+        Arşivlendi
+      </span>
+    );
+  }
   return published ? (
     <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-600 dark:text-green-400">
-      Yayında
+      Aktif
     </span>
   ) : (
     <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-semibold text-yellow-600 dark:text-yellow-400">
-      Taslak (Gizli)
+      Taslak
     </span>
   );
 }
@@ -186,22 +196,22 @@ function StatusSelect({
 function EventTableRow({
   event,
   updating,
-  deleting,
+  archiving,
   onStatusChange,
   onNavigate,
-  onDelete,
+  onArchive,
   onEdit,
 }: {
   event: EventRecord;
   updating: boolean;
-  deleting: boolean;
+  archiving: boolean;
   onStatusChange: (id: string, status: EventStatus) => void;
   onNavigate: (id: string) => void;
-  onDelete: (id: string) => void;
+  onArchive: (id: string, archived: boolean) => void;
   onEdit: (event: EventRecord) => void;
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const canDelete = event.status !== 'active';
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const canArchive = event.status !== 'active';
 
   return (
     <tr
@@ -253,11 +263,11 @@ function EventTableRow({
             disabled={updating}
             onChange={(v) => onStatusChange(event.id, v)}
           />
-          <PublishBadge published={event.is_published} />
+          <VisibilityBadge published={event.is_published} archived={event.is_archived} />
         </div>
       </td>
 
-      {/* Edit + Delete — stopPropagation prevents row navigation */}
+      {/* Edit + Archive — stopPropagation prevents row navigation */}
       <td className="p-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 whitespace-nowrap">
           <button
@@ -268,21 +278,33 @@ function EventTableRow({
             Düzenle
           </button>
 
-          {canDelete && (
+          {event.is_archived ? (
             <>
               <span className="text-muted-foreground/30">·</span>
-              {confirmDelete ? (
+              <button
+                onClick={() => onArchive(event.id, false)}
+                disabled={archiving}
+                className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-primary disabled:opacity-50"
+              >
+                <ArchiveRestore className="h-3 w-3" />
+                {archiving ? '…' : 'Arşivden Çıkar'}
+              </button>
+            </>
+          ) : canArchive && (
+            <>
+              <span className="text-muted-foreground/30">·</span>
+              {confirmArchive ? (
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => { onDelete(event.id); setConfirmDelete(false); }}
-                    disabled={deleting}
+                    onClick={() => { onArchive(event.id, true); setConfirmArchive(false); }}
+                    disabled={archiving}
                     className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
                   >
-                    {deleting ? '…' : 'Onayla'}
+                    {archiving ? '…' : 'Onayla'}
                   </button>
                   <span className="text-muted-foreground/40">·</span>
                   <button
-                    onClick={() => setConfirmDelete(false)}
+                    onClick={() => setConfirmArchive(false)}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
                     Vazgeç
@@ -290,11 +312,11 @@ function EventTableRow({
                 </div>
               ) : (
                 <button
-                  onClick={() => setConfirmDelete(true)}
+                  onClick={() => setConfirmArchive(true)}
                   className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-destructive"
                 >
-                  <Trash2 className="h-3 w-3" />
-                  Sil
+                  <Archive className="h-3 w-3" />
+                  Arşive Kaldır
                 </button>
               )}
             </>
@@ -315,22 +337,22 @@ function EventTableRow({
 function EventCard({
   event,
   updating,
-  deleting,
+  archiving,
   onStatusChange,
   onNavigate,
-  onDelete,
+  onArchive,
   onEdit,
 }: {
   event: EventRecord;
   updating: boolean;
-  deleting: boolean;
+  archiving: boolean;
   onStatusChange: (id: string, status: EventStatus) => void;
   onNavigate: (id: string) => void;
-  onDelete: (id: string) => void;
+  onArchive: (id: string, archived: boolean) => void;
   onEdit: (event: EventRecord) => void;
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const canDelete = event.status !== 'active';
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const canArchive = event.status !== 'active';
 
   return (
     <div
@@ -360,7 +382,7 @@ function EventCard({
         <div className="flex flex-wrap items-center gap-2">
           <CategoryTag event={event} />
           <StatusBadge status={event.status} />
-          <PublishBadge published={event.is_published} />
+          <VisibilityBadge published={event.is_published} archived={event.is_archived} />
           <span className="text-xs text-muted-foreground">{event.capacity} kontenjan</span>
         </div>
 
@@ -384,31 +406,42 @@ function EventCard({
             Etkinliği düzenle
           </button>
 
-          {canDelete && (
-            confirmDelete ? (
-              <div className="flex items-center gap-2">
+          {event.is_archived ? (
+            <button
+              onClick={() => onArchive(event.id, false)}
+              disabled={archiving}
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition hover:text-primary disabled:opacity-50"
+            >
+              <ArchiveRestore className="h-3 w-3" />
+              {archiving ? '…' : 'Arşivden çıkar'}
+            </button>
+          ) : (
+            canArchive && (
+              confirmArchive ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { onArchive(event.id, true); setConfirmArchive(false); }}
+                    disabled={archiving}
+                    className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+                  >
+                    {archiving ? '…' : 'Arşivlemeyi onayla'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmArchive(false)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Vazgeç
+                  </button>
+                </div>
+              ) : (
                 <button
-                  onClick={() => { onDelete(event.id); setConfirmDelete(false); }}
-                  disabled={deleting}
-                  className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+                  onClick={() => setConfirmArchive(true)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-destructive"
                 >
-                  {deleting ? '…' : 'Silmeyi onayla'}
+                  <Archive className="h-3 w-3" />
+                  Etkinliği arşive kaldır
                 </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Vazgeç
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-destructive"
-              >
-                <Trash2 className="h-3 w-3" />
-                Etkinliği sil
-              </button>
+              )
             )
           )}
         </div>
@@ -795,6 +828,7 @@ function toDatetimeLocalValue(iso: string): string {
 
 type StatusFilter = 'all' | EventStatus;
 type PublishFilter = 'all' | 'published' | 'draft';
+type ArchiveFilter = 'active' | 'archived';
 
 const statusFilterLabels: Record<StatusFilter, string> = {
   all: 'Tümü',
@@ -809,6 +843,11 @@ const publishFilterLabels: Record<PublishFilter, string> = {
   draft: 'Taslak',
 };
 
+const archiveFilterLabels: Record<ArchiveFilter, string> = {
+  active: 'Aktif Etkinlikler',
+  archived: 'Arşivlenenler',
+};
+
 export default function AdminEvents() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -820,12 +859,13 @@ export default function AdminEvents() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [publishFilter, setPublishFilter] = useState<PublishFilter>('all');
+  const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>('active');
 
   useEffect(() => {
     fetchEvents();
@@ -834,7 +874,7 @@ export default function AdminEvents() {
   }, []);
 
   const eventSelect =
-    'id, title, description, image_url, event_date, capacity, max_tickets_per_user, category, category_id, price, location, is_published, status, created_at, event_categories(name, color_code)';
+    'id, title, description, image_url, event_date, capacity, max_tickets_per_user, category, category_id, price, location, is_published, is_archived, status, created_at, event_categories(name, color_code)';
 
   async function fetchEvents() {
     setLoading(true);
@@ -879,27 +919,21 @@ export default function AdminEvents() {
     setUpdatingStatusId(null);
   }
 
-  async function handleDeleteEvent(id: string) {
-    setDeletingId(id);
+  async function handleArchiveEvent(id: string, archived: boolean) {
+    setArchivingId(id);
 
-    // Remove the banner from storage before deleting the DB row
-    const eventToDelete = events.find((e) => e.id === id);
-    if (eventToDelete?.image_url) {
-      const fileName = eventToDelete.image_url.split('/').pop()?.split('?')[0];
-      if (fileName) {
-        await supabase.storage.from('event-banners').remove([fileName]);
-      }
-    }
-
-    const { error } = await supabase.from('events').delete().eq('id', id);
+    const { error } = await supabase
+      .from('events')
+      .update({ is_archived: archived })
+      .eq('id', id);
 
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Etkinlik silindi.');
-      setEvents((prev) => prev.filter((e) => e.id !== id));
+      toast.success(archived ? 'Etkinlik arşive kaldırıldı.' : 'Etkinlik arşivden çıkarıldı.');
+      setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, is_archived: archived } : e)));
     }
-    setDeletingId(null);
+    setArchivingId(null);
   }
 
   function openCreate() {
@@ -921,7 +955,11 @@ export default function AdminEvents() {
 
   const searchLower = searchQuery.toLowerCase().trim();
 
-  const displayedEvents = events.filter((e) => {
+  // Archive scope is applied first — the Status/Publish pills and their
+  // counts only ever operate within the currently selected archive tab.
+  const archiveScoped = events.filter((e) => e.is_archived === (archiveFilter === 'archived'));
+
+  const displayedEvents = archiveScoped.filter((e) => {
     const statusMatch = statusFilter === 'all' || e.status === statusFilter;
     const publishMatch =
       publishFilter === 'all' ||
@@ -934,17 +972,22 @@ export default function AdminEvents() {
     return statusMatch && publishMatch && searchMatch;
   });
 
+  const archiveCounts: Record<ArchiveFilter, number> = {
+    active: events.filter((e) => !e.is_archived).length,
+    archived: events.filter((e) => e.is_archived).length,
+  };
+
   const statusCounts: Record<StatusFilter, number> = {
-    all: events.length,
-    active: events.filter((e) => e.status === 'active').length,
-    cancelled: events.filter((e) => e.status === 'cancelled').length,
-    completed: events.filter((e) => e.status === 'completed').length,
+    all: archiveScoped.length,
+    active: archiveScoped.filter((e) => e.status === 'active').length,
+    cancelled: archiveScoped.filter((e) => e.status === 'cancelled').length,
+    completed: archiveScoped.filter((e) => e.status === 'completed').length,
   };
 
   const publishCounts: Record<PublishFilter, number> = {
-    all: events.length,
-    published: events.filter((e) => e.is_published).length,
-    draft: events.filter((e) => !e.is_published).length,
+    all: archiveScoped.length,
+    published: archiveScoped.filter((e) => e.is_published).length,
+    draft: archiveScoped.filter((e) => !e.is_published).length,
   };
 
   const isFiltered = searchQuery || statusFilter !== 'all' || publishFilter !== 'all';
@@ -961,9 +1004,9 @@ export default function AdminEvents() {
             {loading ? (
               <span className="inline-block h-4 w-24 animate-pulse rounded bg-muted" />
             ) : isFiltered ? (
-              `${displayedEvents.length} / ${events.length} etkinlik`
+              `${displayedEvents.length} / ${archiveScoped.length} etkinlik`
             ) : (
-              `${events.length} etkinlik (toplam)`
+              `${archiveScoped.length} etkinlik`
             )}
           </p>
         </div>
@@ -987,6 +1030,26 @@ export default function AdminEvents() {
             <span className="sm:hidden">Yeni</span>
           </button>
         </div>
+      </div>
+
+      {/* Archive tabs */}
+      <div className="mb-4 flex border-b">
+        {(['active', 'archived'] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setArchiveFilter(f)}
+            className={cn(
+              'flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition',
+              archiveFilter === f
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {f === 'archived' && <Archive className="h-3.5 w-3.5" />}
+            {archiveFilterLabels[f]} ({archiveCounts[f]})
+          </button>
+        ))}
       </div>
 
       {/* Search bar */}
@@ -1066,10 +1129,10 @@ export default function AdminEvents() {
                     key={event.id}
                     event={event}
                     updating={updatingStatusId === event.id}
-                    deleting={deletingId === event.id}
+                    archiving={archivingId === event.id}
                     onStatusChange={handleStatusChange}
                     onNavigate={(id) => navigate(`/admin/events/${id}`)}
-                    onDelete={handleDeleteEvent}
+                    onArchive={handleArchiveEvent}
                     onEdit={openEdit}
                   />
                 ))}
@@ -1098,10 +1161,10 @@ export default function AdminEvents() {
                   key={event.id}
                   event={event}
                   updating={updatingStatusId === event.id}
-                  deleting={deletingId === event.id}
+                  archiving={archivingId === event.id}
                   onStatusChange={handleStatusChange}
                   onNavigate={(id) => navigate(`/admin/events/${id}`)}
-                  onDelete={handleDeleteEvent}
+                  onArchive={handleArchiveEvent}
                   onEdit={openEdit}
                 />
               ))}

@@ -8,11 +8,15 @@
       "Edit",
       "Glob",
       "Grep",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__execute_sql",
+      "mcp__plugin_supabase_supabase__get_advisors"
     ]
   },
   "enabledPlugins": {
     "claude-md-management@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": false
+    "frontend-design@claude-plugins-official": false,
+    "supabase@claude-plugins-official": true
   }
 }
