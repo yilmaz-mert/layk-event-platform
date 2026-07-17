@@ -25,8 +25,16 @@ export default function UserProfile() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [address, setAddress] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [privacyChangedAt, setPrivacyChangedAt] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Ticks once a minute so the cooldown countdown stays accurate without a reload
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Support ticket state ───────────────────────────────────────────────────
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -46,7 +54,7 @@ export default function UserProfile() {
   async function fetchProfile(userId: string) {
     const { data } = await supabase
       .from('users')
-      .select('full_name, phone_number, address, is_private')
+      .select('full_name, phone_number, address, is_private, privacy_changed_at')
       .eq('id', userId)
       .single();
     if (data) {
@@ -54,6 +62,7 @@ export default function UserProfile() {
       setPhoneNumber(data.phone_number ?? '');
       setAddress(data.address ?? '');
       setIsPrivate(data.is_private ?? false);
+      setPrivacyChangedAt(data.privacy_changed_at ?? null);
     }
     setProfileLoading(false);
   }
@@ -78,7 +87,12 @@ export default function UserProfile() {
       .eq('id', profile.id);
 
     if (error) {
-      toast.error(error.message);
+      if (error.message.includes('Gizlilik ayarı')) {
+        toast.error('Gizlilik ayarı 24 saat içinde sadece bir kez değiştirilebilir. Lütfen bekleyin.');
+      } else {
+        toast.error(error.message);
+      }
+      await fetchProfile(profile.id);
       setSaving(false);
       return;
     }
@@ -167,6 +181,14 @@ export default function UserProfile() {
   // ── Tab navigation ─────────────────────────────────────────────────────────
   function openProfileTab() { setSearchParams({}, { replace: true }); }
   function openSupportTab() { setSearchParams({ tab: 'support' }, { replace: true }); }
+
+  // ── Privacy cooldown ────────────────────────────────────────────────────────
+  const cooldownMs = 24 * 60 * 60 * 1000;
+  const privacyChangedAtMs = privacyChangedAt ? new Date(privacyChangedAt).getTime() : null;
+  const isCooldownActive = privacyChangedAtMs !== null && now - privacyChangedAtMs < cooldownMs;
+  const cooldownRemainingMs = privacyChangedAtMs !== null ? privacyChangedAtMs + cooldownMs - now : 0;
+  const cooldownHours = Math.max(0, Math.floor(cooldownRemainingMs / (60 * 60 * 1000)));
+  const cooldownMinutes = Math.max(0, Math.floor((cooldownRemainingMs % (60 * 60 * 1000)) / (60 * 1000)));
 
   return (
     <main
@@ -270,12 +292,30 @@ export default function UserProfile() {
                 />
               </div>
 
-              <Switch
-                checked={isPrivate}
-                onChange={setIsPrivate}
-                id="is-private"
-                label="Gizli Hesap: Etkinlik katılımlarımı gizle"
-              />
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Switch
+                    checked={isPrivate}
+                    onChange={setIsPrivate}
+                    disabled={isCooldownActive}
+                    id="is-private"
+                    label="Gizli Hesap (Etkinlik Katılım Gizliliği)"
+                  />
+                  {isCooldownActive && (
+                    <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                      ⏳ Ayar kilitli. Tekrar değiştirebilmek için kalan süre: {cooldownHours} saat {cooldownMinutes} dakika.
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Gizli hesap aktifken, katıldığınız etkinliklerde adınız diğer kullanıcılara
+                  görünmez. Ancak siz de diğer katılımcıları göremezsiniz.
+                </p>
+                <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
+                  ⚠️ Dikkat: Kötüye kullanımı önlemek amacıyla gizlilik ayarı değiştirdikten sonra
+                  24 saat boyunca kilitlenir.
+                </p>
+              </div>
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">E-posta</label>

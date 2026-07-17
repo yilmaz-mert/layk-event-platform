@@ -28,7 +28,7 @@ export default function UserLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center gap-1 px-4 py-3">
           <span className="mr-auto text-lg font-bold text-foreground">L&apos;Ayk</span>
 

@@ -131,10 +131,14 @@ function StatusBadge({ status }: { status: EventStatus }) {
   );
 }
 
-function DraftBadge() {
-  return (
+function PublishBadge({ published }: { published: boolean }) {
+  return published ? (
+    <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-600 dark:text-green-400">
+      Yayında
+    </span>
+  ) : (
     <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-semibold text-yellow-600 dark:text-yellow-400">
-      Taslak
+      Taslak (Gizli)
     </span>
   );
 }
@@ -249,7 +253,7 @@ function EventTableRow({
             disabled={updating}
             onChange={(v) => onStatusChange(event.id, v)}
           />
-          {!event.is_published && <DraftBadge />}
+          <PublishBadge published={event.is_published} />
         </div>
       </td>
 
@@ -356,7 +360,7 @@ function EventCard({
         <div className="flex flex-wrap items-center gap-2">
           <CategoryTag event={event} />
           <StatusBadge status={event.status} />
-          {!event.is_published && <DraftBadge />}
+          <PublishBadge published={event.is_published} />
           <span className="text-xs text-muted-foreground">{event.capacity} kontenjan</span>
         </div>
 
@@ -790,12 +794,19 @@ function toDatetimeLocalValue(iso: string): string {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 type StatusFilter = 'all' | EventStatus;
+type PublishFilter = 'all' | 'published' | 'draft';
 
 const statusFilterLabels: Record<StatusFilter, string> = {
   all: 'Tümü',
   active: 'Aktif',
   cancelled: 'İptal Edildi',
   completed: 'Tamamlandı',
+};
+
+const publishFilterLabels: Record<PublishFilter, string> = {
+  all: 'Tümü',
+  published: 'Yayında',
+  draft: 'Taslak',
 };
 
 export default function AdminEvents() {
@@ -814,6 +825,7 @@ export default function AdminEvents() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [publishFilter, setPublishFilter] = useState<PublishFilter>('all');
 
   useEffect(() => {
     fetchEvents();
@@ -911,12 +923,15 @@ export default function AdminEvents() {
 
   const displayedEvents = events.filter((e) => {
     const statusMatch = statusFilter === 'all' || e.status === statusFilter;
+    const publishMatch =
+      publishFilter === 'all' ||
+      (publishFilter === 'published' ? e.is_published : !e.is_published);
     const searchMatch =
       !searchLower ||
       e.title.toLowerCase().includes(searchLower) ||
       (e.description?.toLowerCase().includes(searchLower) ?? false) ||
       (e.category?.toLowerCase().includes(searchLower) ?? false);
-    return statusMatch && searchMatch;
+    return statusMatch && publishMatch && searchMatch;
   });
 
   const statusCounts: Record<StatusFilter, number> = {
@@ -926,7 +941,13 @@ export default function AdminEvents() {
     completed: events.filter((e) => e.status === 'completed').length,
   };
 
-  const isFiltered = searchQuery || statusFilter !== 'all';
+  const publishCounts: Record<PublishFilter, number> = {
+    all: events.length,
+    published: events.filter((e) => e.is_published).length,
+    draft: events.filter((e) => !e.is_published).length,
+  };
+
+  const isFiltered = searchQuery || statusFilter !== 'all' || publishFilter !== 'all';
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -985,7 +1006,8 @@ export default function AdminEvents() {
       </div>
 
       {/* Status filter pills */}
-      <div className="mb-5 flex flex-wrap gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Durum:</span>
         {(['all', 'active', 'cancelled', 'completed'] as const).map((f) => (
           <button
             key={f}
@@ -998,6 +1020,25 @@ export default function AdminEvents() {
             )}
           >
             {statusFilterLabels[f]} ({statusCounts[f]})
+          </button>
+        ))}
+      </div>
+
+      {/* Publish filter pills */}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Yayın Durumu:</span>
+        {(['all', 'published', 'draft'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setPublishFilter(f)}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs font-medium transition',
+              publishFilter === f
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+            )}
+          >
+            {publishFilterLabels[f]} ({publishCounts[f]})
           </button>
         ))}
       </div>

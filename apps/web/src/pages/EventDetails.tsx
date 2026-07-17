@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, MapPin, MessageSquareQuote, Tag, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Lock, MapPin, MessageSquareQuote, Tag, Users } from 'lucide-react';
 import { supabase, formatDateTime, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
@@ -31,6 +31,12 @@ interface UserReservation {
   tickets_requested: number;
 }
 
+interface PublicAttendee {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function EventDetails() {
@@ -48,10 +54,32 @@ export default function EventDetails() {
   const [booking, setBooking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [attendees, setAttendees] = useState<PublicAttendee[]>([]);
+  const [attendeesLoading, setAttendeesLoading] = useState(false);
 
   useEffect(() => {
     if (id) fetchData(id, profile?.id);
   }, [id, profile?.id]);
+
+  // Attendees are only fetched once we know the requester qualifies (public
+  // account) — the RPC itself also enforces this server-side (see 0026), so
+  // this is purely an optimization to skip a call we know will be empty.
+  useEffect(() => {
+    if (!id || !profile?.id || profile.is_private) {
+      setAttendees([]);
+      return;
+    }
+    let isMounted = true;
+    setAttendeesLoading(true);
+    supabase
+      .rpc('get_public_event_attendees', { p_event_id: id })
+      .then(({ data, error }) => {
+        if (!isMounted) return;
+        if (!error) setAttendees((data ?? []) as PublicAttendee[]);
+        setAttendeesLoading(false);
+      });
+    return () => { isMounted = false; };
+  }, [id, profile?.id, profile?.is_private]);
 
   useEffect(() => {
     if (reservation) setSelectedSeats(reservation.tickets_requested);
@@ -532,6 +560,77 @@ export default function EventDetails() {
           </div>
         </div>
       </div>
+
+      {/* Attendees section */}
+      <section className="mt-8 rounded-xl border bg-card p-5">
+        <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          Katılımcılar / Kimler Geliyor?
+        </h2>
+
+        {!profile ? (
+          <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+            Katılımcıları görmek için{' '}
+            <Link
+              to="/login"
+              state={{ from: location }}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              giriş yapmalısınız
+            </Link>
+            .
+          </div>
+        ) : profile.is_private ? (
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-5 text-center">
+            <Lock className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              Gizli hesap modundayken diğer katılımcıları göremezsiniz. Görünürlüğü açmak için
+              profil ayarlarına gidin.
+            </p>
+            <Link
+              to="/profile"
+              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
+            >
+              Profil Ayarlarına Git
+            </Link>
+          </div>
+        ) : attendeesLoading ? (
+          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col items-center gap-1.5">
+                <div className="h-12 w-12 animate-pulse rounded-full bg-muted" />
+                <div className="h-3 w-10 animate-pulse rounded bg-muted" />
+              </div>
+            ))}
+          </div>
+        ) : attendees.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">
+            Henüz herkese açık katılımcı bulunmuyor.
+          </p>
+        ) : (
+          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+            {attendees.map((a) => (
+              <div key={a.id} className="flex flex-col items-center gap-1.5 text-center">
+                {a.avatar_url ? (
+                  <img
+                    src={a.avatar_url}
+                    alt={a.full_name ?? ''}
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                    {(a.full_name ?? '?').trim().charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="line-clamp-1 w-full text-xs text-foreground">
+                  {a.full_name ?? 'İsimsiz'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {showCancelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}

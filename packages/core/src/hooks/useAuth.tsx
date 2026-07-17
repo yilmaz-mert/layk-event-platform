@@ -8,6 +8,8 @@ interface UserProfile {
   email: string;
   role: 'admin' | 'user';
   approval_status: 'pending' | 'approved' | 'rejected';
+  is_private: boolean;
+  privacy_changed_at?: string;
 }
 
 interface AuthContextValue {
@@ -48,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data, error } = await supabase
       .from('users')
-      .select('id, full_name, email, role, approval_status')
+      .select('id, full_name, email, role, approval_status, is_private')
       .eq('id', userId)
       .single();
 

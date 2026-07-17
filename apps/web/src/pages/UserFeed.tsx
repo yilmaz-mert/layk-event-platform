@@ -182,6 +182,7 @@ export default function UserFeed() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLeftFade, setShowLeftFade] = useState(false);
   const [showRightFade, setShowRightFade] = useState(true);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const categoryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -249,6 +250,14 @@ export default function UserFeed() {
   const now = new Date();
   const isGuest = !profile;
 
+  const categoryColorByName = new Map<string, string>();
+  for (const e of events) {
+    const name = e.event_categories?.name ?? e.category;
+    if (name && e.event_categories?.color_code && !categoryColorByName.has(name)) {
+      categoryColorByName.set(name, e.event_categories.color_code);
+    }
+  }
+
   const categories = [
     'All',
     ...Array.from(
@@ -305,7 +314,7 @@ export default function UserFeed() {
     <main className="mx-auto max-w-6xl px-4 pb-16 pt-6">
       {/* Search bar */}
       {!loading && !error && (
-        <div className="relative mb-4">
+        <div className="relative z-20 mb-4">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
@@ -342,22 +351,46 @@ export default function UserFeed() {
               setShowRightFade(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
             }}
           >
-            <div className="flex gap-2 pb-1" style={{ width: 'max-content' }}>
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  ref={(el) => { categoryRefs.current[cat] = el; }}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={cn(
-                    'whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium transition',
-                    selectedCategory === cat
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                  )}
-                >
-                  {cat === 'All' ? 'Tümü' : cat}
-                </button>
-              ))}
+            <div className="flex gap-2 py-1" style={{ width: 'max-content' }}>
+              {categories.map((cat) => {
+                const isSelected = selectedCategory === cat;
+                const isHovered = hoveredCategory === cat;
+                const color = cat === 'All' ? null : (categoryColorByName.get(cat) ?? null);
+
+                return (
+                  <button
+                    key={cat}
+                    ref={(el) => { categoryRefs.current[cat] = el; }}
+                    onClick={() => setSelectedCategory(cat)}
+                    onMouseEnter={() => setHoveredCategory(cat)}
+                    onMouseLeave={() => setHoveredCategory(null)}
+                    className={cn(
+                      'relative z-0 hover:z-30 focus-visible:z-30',
+                      'transform whitespace-nowrap select-none cursor-pointer rounded-full border px-4 py-1.5',
+                      'text-sm font-medium transition-all duration-200 active:scale-95 hover:scale-105 hover:shadow-md',
+                      // Fallback (no color_code / the "All" pill): standard theme styling
+                      !color &&
+                        (isSelected
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground'),
+                      color && isSelected && 'shadow-sm',
+                    )}
+                    style={
+                      color
+                        ? isSelected
+                          ? { backgroundColor: color, borderColor: color, color: '#fff' }
+                          : {
+                              borderColor: color,
+                              color,
+                              backgroundColor: isHovered ? `${color}15` : 'transparent',
+                            }
+                        : undefined
+                    }
+                  >
+                    {cat === 'All' ? 'Tümü' : cat}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
