@@ -782,6 +782,9 @@ function EventModal({
                   {isEditing ? 'Yeni bir banner görseli yüklemek için tıklayın' : 'Banner görseli yüklemek için tıklayın'}
                 </span>
                 <span className="text-xs text-muted-foreground/60">PNG, JPG, WEBP</span>
+                <span className="text-xs text-muted-foreground/60">
+                  En iyi görünüm için yatay veya kare görseller önerilir
+                </span>
                 <input
                   ref={fileInputRef}
                   type="file"

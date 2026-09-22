@@ -53,6 +53,7 @@ function BookingCard({
   reservation,
   isPast = false,
 }: BookingCardProps) {
+  const [imgError, setImgError] = useState(false);
   const event = reservation.events;
   if (!event) return null;
 
@@ -63,10 +64,11 @@ function BookingCard({
         to={`/events/${event.id}`}
         className="flex gap-3 p-4 transition hover:bg-muted/40"
       >
-        {event.image_url ? (
+        {event.image_url && !imgError ? (
           <img
             src={event.image_url}
             alt={event.title}
+            onError={() => setImgError(true)}
             className="h-16 w-16 shrink-0 rounded-lg object-cover"
           />
         ) : (
@@ -206,7 +208,7 @@ export default function MyBookings() {
               <div className="space-y-3">
                 {upcoming.map((r) => (
                   <BookingCard
-                    key={r.id}
+                    key={`${r.id}:${r.events?.image_url ?? ''}`}
                     reservation={r}
                   />
                 ))}
@@ -220,7 +222,9 @@ export default function MyBookings() {
                 Geçmiş
               </h2>
               <div className="space-y-3">
-                {past.map((r) => <BookingCard key={r.id} reservation={r} isPast />)}
+                {past.map((r) => (
+                  <BookingCard key={`${r.id}:${r.events?.image_url ?? ''}`} reservation={r} isPast />
+                ))}
               </div>
             </section>
           )}

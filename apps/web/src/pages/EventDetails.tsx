@@ -167,6 +167,7 @@ export default function EventDetails() {
   const [attendees, setAttendees] = useState<PublicAttendee[]>([]);
   const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
+  const [bannerError, setBannerError] = useState(false);
 
   useEffect(() => {
     if (id) fetchData(id, profile?.id);
@@ -199,6 +200,7 @@ export default function EventDetails() {
   async function fetchData(eventId: string, userId?: string) {
     setLoading(true);
     setError(null);
+    setBannerError(false);
 
     const [eventRes, reservationRes] = await Promise.all([
       supabase
@@ -390,13 +392,15 @@ export default function EventDetails() {
         Etkinliklere dön
       </Link>
 
-      {/* Banner image */}
-      {event.image_url ? (
-        <div className="mb-6 overflow-hidden rounded-2xl bg-muted">
+      {/* Banner image — full poster visible on mobile (natural ratio, capped height);
+          desktop keeps the original fixed-height crop. */}
+      {event.image_url && !bannerError ? (
+        <div className="mb-6 flex items-center justify-center overflow-hidden rounded-2xl bg-muted">
           <img
             src={event.image_url}
             alt={event.title}
-            className="h-64 w-full object-cover sm:h-80"
+            onError={() => setBannerError(true)}
+            className="max-h-[55vh] w-auto max-w-full md:h-80 md:w-full md:max-h-none md:max-w-none md:object-cover"
           />
         </div>
       ) : (

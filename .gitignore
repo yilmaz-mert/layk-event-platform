@@ -26,3 +26,11 @@ expo-env.d.ts
 *.njsproj
 *.sln
 *.sw?
+scripts
+
+# Agents
+.agents
+.claude
+skills-lock.json
+CLAUDE.md
+AGY.md

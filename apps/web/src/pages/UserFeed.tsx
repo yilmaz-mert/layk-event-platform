@@ -22,12 +22,22 @@ interface Event {
   event_categories: { name: string; color_code: string } | null;
 }
 
+// ── Card image fit policy ────────────────────────────────────────────────────
+// Landscape/square photos can carry text or a logo just as easily as a portrait
+// poster can — orientation alone doesn't tell us what's safe to crop. So on mobile
+// we never crop: always contain, and only use the ratio to pick a box shape that
+// keeps the letterboxing (filled with the card's own muted background) reasonable.
+function getCardAspect(ratio: number | null): string {
+  if (ratio !== null && ratio < 0.9) return 'aspect-[4/5]';
+  return 'aspect-[4/3]';
+}
+
 // ── Skeleton card ─────────────────────────────────────────────────────────────
 
 function SkeletonCard() {
   return (
     <div className="animate-pulse overflow-hidden rounded-2xl border bg-card">
-      <div className="h-44 bg-muted" />
+      <div className="aspect-[4/3] bg-muted md:aspect-auto md:h-44" />
       <div className="space-y-3 p-4">
         <div className="flex justify-between">
           <div className="h-3 w-16 rounded bg-muted" />
@@ -53,10 +63,13 @@ interface EventCardProps {
 }
 
 function EventCard({ event, isBooked, isGuest, isApproved, isPast = false }: EventCardProps) {
+  const [imgRatio, setImgRatio] = useState<number | null>(null);
+  const [imgError, setImgError] = useState(false);
   const spotsLeft = event.capacity - event.booked_count;
   const isSoldOut = spotsLeft <= 0;
   const categoryLabel = event.event_categories?.name ?? event.category;
   const categoryColor = event.event_categories?.color_code;
+  const aspectClass = getCardAspect(imgRatio);
 
   return (
     <Link
@@ -67,12 +80,14 @@ function EventCard({ event, isBooked, isGuest, isApproved, isPast = false }: Eve
         isPast && 'opacity-65',
       )}
     >
-      {event.image_url ? (
-        <div className="relative h-44 w-full shrink-0 overflow-hidden bg-muted">
+      {event.image_url && !imgError ? (
+        <div className={cn('relative w-full shrink-0 overflow-hidden bg-muted', aspectClass, 'md:aspect-auto md:h-44')}>
           <img
             src={event.image_url}
             alt={event.title}
-            className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+            onLoad={(e) => setImgRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
+            onError={() => setImgError(true)}
+            className="h-full w-full object-contain transition-transform duration-300 hover:scale-105 md:object-cover"
           />
           {isPast && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/60">
@@ -83,7 +98,7 @@ function EventCard({ event, isBooked, isGuest, isApproved, isPast = false }: Eve
           )}
         </div>
       ) : (
-        <div className="flex h-44 shrink-0 items-center justify-center bg-muted">
+        <div className={cn('flex shrink-0 items-center justify-center bg-muted', aspectClass, 'md:aspect-auto md:h-44')}>
           <CalendarDays className="h-10 w-10 text-muted-foreground/30" />
         </div>
       )}
@@ -116,7 +131,7 @@ function EventCard({ event, isBooked, isGuest, isApproved, isPast = false }: Eve
           )}
         </div>
 
-        <h3 className="font-semibold leading-snug text-foreground">{event.title}</h3>
+        <h3 className="line-clamp-2 font-semibold leading-snug text-foreground">{event.title}</h3>
 
         {/* Location + price row */}
         <div className="flex items-center justify-between gap-2">
@@ -443,7 +458,7 @@ export default function UserFeed() {
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
                 {upcoming.map((event) => (
                   <EventCard
-                    key={event.id}
+                    key={`${event.id}:${event.image_url ?? ''}`}
                     event={event}
                     isBooked={myReservations.has(event.id)}
                     isGuest={isGuest}
@@ -462,7 +477,7 @@ export default function UserFeed() {
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
                 {past.map((event) => (
                   <EventCard
-                    key={event.id}
+                    key={`${event.id}:${event.image_url ?? ''}`}
                     event={event}
                     isBooked={myReservations.has(event.id)}
                     isGuest={isGuest}
