@@ -1,11 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Lock, MapPin, MessageSquareQuote, Search, Tag, Users, X } from 'lucide-react';
-import { supabase, formatDateTime, formatPrice } from '@layk/core';
+import { ArrowLeft, CalendarDays, Lock, MapPin, MessageSquareQuote, Minus, Plus, Search, Users, X } from 'lucide-react';
+import { supabase, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import AvatarBubble from '@/components/AvatarBubble';
 import { cn } from '@layk/core';
+import {
+  availabilityToneClass,
+  categoryDotStyle,
+  formatEventTime,
+  formatRelativeDay,
+  getAvailability,
+} from '@/lib/eventDisplay';
+
+const longDayFmt = new Intl.DateTimeFormat('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const primaryBtn =
+  'h-11 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50';
+const secondaryBtn =
+  'h-11 rounded-lg border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +116,7 @@ function AttendeesModal({ attendees, onClose }: { attendees: PublicAttendee[]; o
           <button
             type="button"
             onClick={onClose}
+            aria-label="Kapat"
             className="rounded-lg p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >
             <X className="h-4 w-4" />
@@ -147,6 +161,67 @@ function AttendeesModal({ attendees, onClose }: { attendees: PublicAttendee[]; o
   );
 }
 
+// ── Seat stepper ─────────────────────────────────────────────────────────────
+
+interface SeatStepperProps {
+  id: string;
+  label: string;
+  value: number;
+  max: number;
+  disabled: boolean;
+  onChange: (updater: (prev: number) => number) => void;
+  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur: () => void;
+}
+
+function SeatStepper({ id, label, value, max, disabled, onChange, onInputChange, onBlur }: SeatStepperProps) {
+  const stepBtn =
+    'flex h-11 w-11 items-center justify-center rounded-lg border bg-background text-foreground transition-colors hover:bg-muted disabled:opacity-40';
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label="Kişi sayısını azalt"
+          disabled={value <= 1 || disabled}
+          onClick={() => onChange((prev) => Math.max(1, prev - 1))}
+          className={stepBtn}
+        >
+          <Minus className="h-4 w-4" aria-hidden />
+        </button>
+        <input
+          id={id}
+          type="number"
+          inputMode="numeric"
+          value={value === 0 ? '' : value}
+          onChange={onInputChange}
+          onBlur={onBlur}
+          disabled={disabled}
+          min={1}
+          max={max}
+          className="h-11 w-16 rounded-lg border border-input bg-background text-center text-base font-semibold tabular-nums text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          aria-label="Kişi sayısını artır"
+          disabled={value >= max || disabled}
+          onClick={() => onChange((prev) => Math.min(max, prev + 1))}
+          className={stepBtn}
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+        </button>
+        <span className="ml-1 text-xs text-muted-foreground">En fazla {max}</span>
+      </div>
+      {value > max && (
+        <p className="text-xs font-medium text-destructive" role="alert">
+          Bu işlem için en fazla {max} kişilik yer mevcut.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function EventDetails() {
@@ -168,6 +243,17 @@ export default function EventDetails() {
   const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [bannerError, setBannerError] = useState(false);
+  const bookingRef = useRef<HTMLElement>(null);
+  const [panelVisible, setPanelVisible] = useState(true);
+
+  // Drives the mobile action bar: shown only while the booking panel is off-screen.
+  useEffect(() => {
+    const el = bookingRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => setPanelVisible(entry.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, [loading, error]);
 
   useEffect(() => {
     if (id) fetchData(id, profile?.id);
@@ -317,6 +403,8 @@ export default function EventDetails() {
   const fillPct = event ? Math.min(100, Math.round((event.booked_count / event.capacity) * 100)) : 0;
   const categoryLabel = event?.event_categories?.name ?? event?.category ?? null;
   const categoryColor = event?.event_categories?.color_code;
+  const availability = getAvailability(event?.capacity ?? 0, event?.booked_count ?? 0);
+  const relativeDay = event ? formatRelativeDay(event.event_date) : null;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const valueStr = e.target.value;
@@ -381,351 +469,313 @@ export default function EventDetails() {
 
   // ── Main render ───────────────────────────────────────────────────────────
 
+  const canBook = isActive && !isPast;
+
+  function scrollToBooking() {
+    bookingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Focus the panel, not the seat input — that would pop the on-screen keyboard.
+    bookingRef.current?.focus({ preventScroll: true });
+  }
+
+  // Short status line shared by the panel and the mobile bar.
+  const statusLine = !canBook
+    ? null
+    : isConfirmed
+      ? { text: `Rezervasyonunuz var, ${reservation!.tickets_requested} kişi`, cls: 'text-success' }
+      : { text: availability.label, cls: availabilityToneClass[availability.tone] };
+
   return (
-    <main className="mx-auto max-w-3xl px-4 pb-16 pt-6">
-      {/* Back navigation */}
+    <main className={cn('mx-auto max-w-5xl px-4 pt-2 sm:pt-4', canBook ? 'pb-28 lg:pb-16' : 'pb-16')}>
       <Link
         to="/"
-        className="mb-6 flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
+        onClick={(e) => {
+          // Came from the feed → go back so its filters and scroll position survive.
+          if ((window.history.state?.idx ?? 0) > 0) {
+            e.preventDefault();
+            navigate(-1);
+          }
+        }}
+        className="-ml-2 mb-2 inline-flex h-10 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <ArrowLeft className="h-4 w-4" aria-hidden />
         Etkinliklere dön
       </Link>
 
-      {/* Banner image — full poster visible on mobile (natural ratio, capped height);
-          desktop keeps the original fixed-height crop. */}
-      {event.image_url && !bannerError ? (
-        <div className="mb-6 flex items-center justify-center overflow-hidden rounded-2xl bg-muted">
-          <img
-            src={event.image_url}
-            alt={event.title}
-            onError={() => setBannerError(true)}
-            className="max-h-[55vh] w-auto max-w-full md:h-80 md:w-full md:max-h-none md:max-w-none md:object-cover"
-          />
-        </div>
-      ) : (
-        <div className="mb-6 flex h-48 items-center justify-center rounded-2xl bg-muted sm:h-64">
-          <CalendarDays className="h-16 w-16 text-muted-foreground/20" />
-        </div>
-      )}
-
-      {/* Title block */}
-      <div className="mb-6 space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {categoryLabel && (
-            <span
-              className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium"
-              style={
-                categoryColor
-                  ? { backgroundColor: `${categoryColor}1A`, color: categoryColor }
-                  : undefined
-              }
-            >
-              <Tag className="h-3 w-3" />
-              {categoryLabel}
-            </span>
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-x-10">
+        {/* Poster + title */}
+        <header className="lg:col-start-1">
+          {/* Full poster is always visible: contained on a muted ground, never cropped. */}
+          {event.image_url && !bannerError ? (
+            <div className="mb-5 flex justify-center overflow-hidden rounded-xl bg-muted">
+              <img
+                src={event.image_url}
+                alt={event.title}
+                onError={() => setBannerError(true)}
+                className="max-h-[60vh] w-auto max-w-full object-contain lg:max-h-[32rem]"
+              />
+            </div>
+          ) : (
+            <div className="mb-5 flex h-40 items-center justify-center rounded-xl bg-muted sm:h-56">
+              <CalendarDays className="h-12 w-12 text-muted-foreground/30" aria-hidden />
+            </div>
           )}
-          {event.status !== 'active' && (
-            <span className={cn(
-              'rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize',
-              event.status === 'completed'
-                ? 'bg-muted text-muted-foreground'
-                : 'bg-destructive/10 text-destructive',
-            )}>
-              {event.status === 'completed' ? 'Tamamlandı' : 'İptal Edildi'}
-            </span>
+
+          {(categoryLabel || event.status !== 'active') && (
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              {categoryLabel && (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={categoryDotStyle(categoryColor)} aria-hidden />
+                  {categoryLabel}
+                </span>
+              )}
+              {event.status !== 'active' && (
+                <span className={cn('font-medium', event.status === 'cancelled' && 'text-destructive')}>
+                  {event.status === 'completed' ? 'Tamamlandı' : 'İptal edildi'}
+                </span>
+              )}
+            </div>
           )}
-        </div>
 
-        <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{event.title}</h1>
+          <h1 className="break-words text-balance text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
+            {event.title}
+          </h1>
 
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CalendarDays className="h-4 w-4 shrink-0" />
-          {formatDateTime(event.event_date, 'long')}
-        </div>
+          <dl className="mt-4 space-y-2 text-sm">
+            <div className="flex items-start gap-2.5">
+              <dt className="sr-only">Tarih</dt>
+              <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <dd className="text-foreground">
+                <time dateTime={event.event_date}>
+                  {longDayFmt.format(new Date(event.event_date))}, {formatEventTime(event.event_date)}
+                </time>
+                {canBook && relativeDay && <span className="text-muted-foreground"> ({relativeDay})</span>}
+              </dd>
+            </div>
+            {event.location && (
+              <div className="flex items-start gap-2.5">
+                <dt className="sr-only">Mekan</dt>
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <dd className="break-words text-foreground">{event.location}</dd>
+              </div>
+            )}
+          </dl>
+        </header>
 
-        {event.location && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4 shrink-0" />
-            {event.location}
+        {/* Booking panel — right after the essentials on mobile, sticky sidebar on desktop */}
+        <aside
+          ref={bookingRef}
+          id="booking"
+          aria-label="Rezervasyon"
+          tabIndex={-1}
+          className="mt-6 focus:outline-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0"
+        >
+          <div className="rounded-xl border bg-card p-5 lg:sticky lg:top-20">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-2xl font-semibold tabular-nums text-foreground">{formatPrice(event.price)}</p>
+              {statusLine && <p className={cn('text-sm font-medium', statusLine.cls)}>{statusLine.text}</p>}
+            </div>
+
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" aria-hidden />
+                  Kontenjan
+                </span>
+                <span className="tabular-nums">{event.booked_count} / {event.capacity}</span>
+              </div>
+              <div
+                className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                role="meter"
+                aria-label="Doluluk"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={fillPct}
+              >
+                <div
+                  className={cn(
+                    'h-full rounded-full',
+                    availability.tone === 'full' ? 'bg-destructive' : availability.tone === 'low' ? 'bg-warning' : 'bg-foreground/70',
+                  )}
+                  style={{ width: `${fillPct}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 border-t pt-5">
+              {!canBook ? (
+                <p className="text-sm text-muted-foreground">
+                  {event.status === 'cancelled'
+                    ? 'Bu etkinlik iptal edildi.'
+                    : 'Bu etkinlik daha önce gerçekleşti.'}
+                  {isConfirmed && ` Rezervasyonunuz: ${reservation!.tickets_requested} kişi.`}
+                </p>
+              ) : isConfirmed ? (
+                <div className="space-y-3">
+                  <SeatStepper
+                    id="seats-update"
+                    label="Kişi sayısını güncelle"
+                    value={selectedSeats}
+                    max={maxSeatsForUpdate}
+                    disabled={booking}
+                    onChange={setSelectedSeats}
+                    onInputChange={handleInputChange}
+                    onBlur={handleInputBlur}
+                  />
+                  <button
+                    onClick={handleUpdate}
+                    disabled={selectedSeats === reservation!.tickets_requested || selectedSeats > maxSeatsForUpdate || selectedSeats < 1 || booking}
+                    className={primaryBtn}
+                  >
+                    {booking ? 'Güncelleniyor…' : 'Rezervasyonu güncelle'}
+                  </button>
+                  <button
+                    onClick={() => setShowCancelModal(true)}
+                    disabled={cancelling || booking}
+                    className="h-11 w-full rounded-lg border border-destructive/30 px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Rezervasyonu iptal et
+                  </button>
+                </div>
+              ) : !profile ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Rezervasyon yapmak için giriş yapmanız gerekiyor.
+                  </p>
+                  <Link to="/login" state={{ from: location }} className={cn(primaryBtn, 'flex items-center justify-center')}>
+                    Giriş yap
+                  </Link>
+                </div>
+              ) : !isApproved ? (
+                <p className="text-sm text-muted-foreground">
+                  Hesabınız yönetici onayı bekliyor. Onaylandığında rezervasyon yapabilirsiniz.
+                </p>
+              ) : isSoldOut ? (
+                <p className="text-sm text-muted-foreground">
+                  Yer açılırsa buradan rezervasyon yapabilirsiniz.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <SeatStepper
+                    id="seats-book"
+                    label="Kişi sayısı"
+                    value={selectedSeats}
+                    max={maxSeats}
+                    disabled={booking}
+                    onChange={setSelectedSeats}
+                    onInputChange={handleInputChange}
+                    onBlur={handleInputBlur}
+                  />
+                  <button
+                    onClick={handleBook}
+                    disabled={selectedSeats > maxSeats || selectedSeats < 1 || booking}
+                    className={primaryBtn}
+                  >
+                    {booking ? 'Rezerve ediliyor…' : `${selectedSeats} kişilik rezervasyon yap`}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </aside>
 
-      {/* Content grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Description */}
-        <div className="lg:col-span-2 space-y-6">
-          {event.description ? (
-            <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Etkinlik hakkında
-              </h2>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
+        {/* Description, closing note, attendees */}
+        <div className="mt-8 space-y-8 lg:col-start-1 lg:row-start-2">
+          <section>
+            <h2 className="mb-2 text-base font-semibold text-foreground">Etkinlik hakkında</h2>
+            {event.description ? (
+              <p className="max-w-prose whitespace-pre-line break-words text-[0.9375rem] leading-relaxed text-foreground/90">
                 {event.description}
               </p>
-            </section>
-          ) : (
-            <p className="text-sm text-muted-foreground">Açıklama girilmemiş.</p>
-          )}
+            ) : (
+              <p className="text-sm text-muted-foreground">Açıklama girilmemiş.</p>
+            )}
+          </section>
 
           {event.status === 'completed' && event.closing_comment && (
             <section className="rounded-xl border bg-card p-4">
-              <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <MessageSquareQuote className="h-3.5 w-3.5" />
-                Kapanış Notu
+              <h2 className="mb-2 flex items-center gap-1.5 text-base font-semibold text-foreground">
+                <MessageSquareQuote className="h-4 w-4 text-muted-foreground" aria-hidden />
+                Kapanış notu
               </h2>
               <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
                 {event.closing_comment}
               </p>
             </section>
           )}
-        </div>
 
-        {/* Booking panel */}
-        <div className="space-y-4">
-          {/* Price card */}
-          <div className="rounded-xl border bg-card p-4 text-center">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Fiyat</p>
-            <p className="mt-1 text-2xl font-bold text-primary">{formatPrice(event.price)}</p>
-          </div>
+          <section>
+            <h2 className="mb-3 text-base font-semibold text-foreground">Kimler geliyor?</h2>
 
-          {/* Capacity card */}
-          <div className="rounded-xl border bg-card p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Users className="h-3.5 w-3.5" />
-                Kontenjan
-              </span>
-              <span className="text-xs font-semibold text-foreground">
-                {event.booked_count} / {event.capacity}
-              </span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all',
-                  isSoldOut
-                    ? 'bg-destructive'
-                    : fillPct >= 80
-                      ? 'bg-yellow-500'
-                      : 'bg-primary',
-                )}
-                style={{ width: `${fillPct}%` }}
-              />
-            </div>
-            {!isPast && !isSoldOut && (
-              <p className="text-xs text-muted-foreground">
-                {spotsLeft} {spotsLeft === 1 ? 'kontenjan' : 'kontenjan'} kaldı
-              </p>
-            )}
-          </div>
-
-          {/* Action card */}
-          <div className="rounded-xl border bg-card p-4">
-            {!isActive || isPast ? (
-              <p className="text-center text-sm text-muted-foreground">
-                {event.status === 'cancelled'
-                  ? 'Bu etkinlik iptal edildi.'
-                  : 'Bu etkinlik daha önce gerçekleşti.'}
-              </p>
-            ) : isConfirmed ? (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-green-600 dark:text-green-400">
-                  ✓ Kaydınız alındı
-                </p>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Kişi sayısını güncelle
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        disabled={selectedSeats <= 1 || booking}
-                        onClick={() => setSelectedSeats((prev) => Math.max(1, prev - 1))}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
-                      >
-                        −
-                      </button>
-
-                      <input
-                        type="number"
-                        value={selectedSeats === 0 ? '' : selectedSeats}
-                        onChange={handleInputChange}
-                        onBlur={handleInputBlur}
-                        disabled={booking}
-                        min={1}
-                        max={maxSeatsForUpdate}
-                        className="h-10 w-20 rounded-lg border border-input bg-background text-center text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition"
-                      />
-
-                      <button
-                        type="button"
-                        disabled={selectedSeats >= maxSeatsForUpdate || booking}
-                        onClick={() => setSelectedSeats((prev) => Math.min(maxSeatsForUpdate, prev + 1))}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
-                      >
-                        +
-                      </button>
-                    </div>
-
-                    {selectedSeats > maxSeatsForUpdate && (
-                      <p className="animate-pulse text-xs font-medium text-destructive">
-                        Bu işlem için en fazla {maxSeatsForUpdate} kişilik yer mevcut.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleUpdate}
-                  disabled={selectedSeats === reservation!.tickets_requested || selectedSeats > maxSeatsForUpdate || selectedSeats < 1 || booking}
-                  className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {booking ? 'Güncelleniyor…' : 'Rezervasyonu Güncelle'}
-                </button>
-
-                <button
-                  onClick={() => setShowCancelModal(true)}
-                  disabled={cancelling || booking}
-                  className="w-full rounded-lg border border-destructive/30 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Rezervasyonu İptal Et
-                </button>
-              </div>
-            ) : !profile ? (
-              <div className="space-y-3 text-center">
-                <p className="text-sm text-muted-foreground">
-                  Rezervasyon yapmak için giriş yapmanız gerekiyor.
-                </p>
+            {!profile ? (
+              <p className="text-sm text-muted-foreground">
+                Katılımcıları görmek için{' '}
                 <Link
                   to="/login"
                   state={{ from: location }}
-                  className="block w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                  className="font-medium text-foreground underline underline-offset-4"
                 >
-                  Giriş Yap
+                  giriş yapın
                 </Link>
-              </div>
-            ) : !isApproved ? (
-              <p className="text-center text-sm text-muted-foreground">
-                Hesabınız yönetici onayı bekliyor.
+                .
               </p>
-            ) : isSoldOut ? (
-              <p className="text-center text-sm font-semibold text-destructive">
-                Kontenjan Doldu
+            ) : profile.is_private ? (
+              <div className="flex items-start gap-3 rounded-lg border border-dashed p-4">
+                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Gizli hesap modundayken diğer katılımcıları göremezsiniz.
+                  </p>
+                  <Link to="/profile" className="inline-block text-sm font-medium text-foreground underline underline-offset-4">
+                    Profil ayarlarına git
+                  </Link>
+                </div>
+              </div>
+            ) : attendeesLoading ? (
+              <div className="flex -space-x-3" aria-busy="true">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-10 w-10 animate-pulse rounded-full bg-muted ring-2 ring-background" />
+                ))}
+              </div>
+            ) : attendees.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Henüz herkese açık katılımcı bulunmuyor.
               </p>
             ) : (
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Kişi sayısı
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        disabled={selectedSeats <= 1 || booking}
-                        onClick={() => setSelectedSeats((prev) => Math.max(1, prev - 1))}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
-                      >
-                        −
-                      </button>
-
-                      <input
-                        type="number"
-                        value={selectedSeats === 0 ? '' : selectedSeats}
-                        onChange={handleInputChange}
-                        onBlur={handleInputBlur}
-                        disabled={booking}
-                        min={1}
-                        max={maxSeats}
-                        className="h-10 w-20 rounded-lg border border-input bg-background text-center text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition"
-                      />
-
-                      <button
-                        type="button"
-                        disabled={selectedSeats >= maxSeats || booking}
-                        onClick={() => setSelectedSeats((prev) => Math.min(maxSeats, prev + 1))}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background font-bold text-foreground hover:bg-muted disabled:opacity-50 transition"
-                      >
-                        +
-                      </button>
-                    </div>
-
-                    {selectedSeats > maxSeats && (
-                      <p className="animate-pulse text-xs font-medium text-destructive">
-                        Bu işlem için en fazla {maxSeats} kişilik yer mevcut.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleBook}
-                  disabled={selectedSeats > maxSeats || selectedSeats < 1 || booking}
-                  className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {booking
-                    ? 'Rezerve ediliyor…'
-                    : `${selectedSeats} Kişilik Rezervasyon Yap`}
-                </button>
-              </div>
+              <AttendeeStack attendees={attendees} onOpen={() => setShowAttendeesModal(true)} />
             )}
-          </div>
+          </section>
         </div>
       </div>
 
-      {/* Attendees section */}
-      <section className="mt-8 rounded-xl border bg-card p-5">
-        <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-foreground">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          Katılımcılar / Kimler Geliyor?
-        </h2>
-
-        {!profile ? (
-          <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-            Katılımcıları görmek için{' '}
-            <Link
-              to="/login"
-              state={{ from: location }}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              giriş yapmalısınız
-            </Link>
-            .
+      {/* Mobile action bar — only while the booking panel is off-screen, so it never
+          sits over the seat input or the on-screen keyboard. */}
+      {canBook && !panelVisible && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold tabular-nums text-foreground">{formatPrice(event.price)}</p>
+              {statusLine && <p className={cn('truncate text-xs font-medium', statusLine.cls)}>{statusLine.text}</p>}
+            </div>
+            {!profile ? (
+              <Link to="/login" state={{ from: location }} className={cn(primaryBtn, 'flex w-auto shrink-0 items-center px-5')}>
+                Giriş yap
+              </Link>
+            ) : !isApproved ? (
+              <span className="shrink-0 text-sm text-muted-foreground">Onay bekleniyor</span>
+            ) : isConfirmed ? (
+              <button type="button" onClick={scrollToBooking} className={cn(secondaryBtn, 'shrink-0')}>
+                Rezervasyonu yönet
+              </button>
+            ) : isSoldOut ? (
+              <span className="shrink-0 text-sm font-medium text-destructive">Kontenjan doldu</span>
+            ) : (
+              <button type="button" onClick={scrollToBooking} className={cn(primaryBtn, 'w-auto shrink-0 px-5')}>
+                Rezervasyon yap
+              </button>
+            )}
           </div>
-        ) : profile.is_private ? (
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-5 text-center">
-            <Lock className="h-5 w-5 shrink-0 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Gizli hesap modundayken diğer katılımcıları göremezsiniz. Görünürlüğü açmak için
-              profil ayarlarına gidin.
-            </p>
-            <Link
-              to="/profile"
-              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
-            >
-              Profil Ayarlarına Git
-            </Link>
-          </div>
-        ) : attendeesLoading ? (
-          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex flex-col items-center gap-1.5">
-                <div className="h-12 w-12 animate-pulse rounded-full bg-muted" />
-                <div className="h-3 w-10 animate-pulse rounded bg-muted" />
-              </div>
-            ))}
-          </div>
-        ) : attendees.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">
-            Henüz herkese açık katılımcı bulunmuyor.
-          </p>
-        ) : (
-          <AttendeeStack attendees={attendees} onOpen={() => setShowAttendeesModal(true)} />
-        )}
-      </section>
+        </div>
+      )}
 
       {showAttendeesModal && (
         <AttendeesModal attendees={attendees} onClose={() => setShowAttendeesModal(false)} />

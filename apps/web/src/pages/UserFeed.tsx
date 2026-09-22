@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { CalendarDays, MapPin, Search, Tag } from 'lucide-react';
-import { supabase, formatDateTime, formatPrice } from '@layk/core';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { CalendarDays, Check, MapPin, Search } from 'lucide-react';
+import { supabase, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { cn } from '@layk/core';
+import {
+  availabilityToneClass,
+  categoryDotStyle,
+  formatEventDay,
+  formatEventTime,
+  getAvailability,
+} from '@/lib/eventDisplay';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +29,8 @@ interface Event {
   event_categories: { name: string; color_code: string } | null;
 }
 
+const ALL = 'All';
+
 // ── Card image fit policy ────────────────────────────────────────────────────
 // Landscape/square photos can carry text or a logo just as easily as a portrait
 // poster can — orientation alone doesn't tell us what's safe to crop. So on mobile
@@ -32,21 +41,22 @@ function getCardAspect(ratio: number | null): string {
   return 'aspect-[4/3]';
 }
 
+const cardImageBox = 'md:aspect-[3/2]';
+
 // ── Skeleton card ─────────────────────────────────────────────────────────────
 
 function SkeletonCard() {
   return (
-    <div className="animate-pulse overflow-hidden rounded-2xl border bg-card">
-      <div className="aspect-[4/3] bg-muted md:aspect-auto md:h-44" />
-      <div className="space-y-3 p-4">
-        <div className="flex justify-between">
-          <div className="h-3 w-16 rounded bg-muted" />
-          <div className="h-3 w-20 rounded bg-muted" />
-        </div>
+    <div className="animate-pulse overflow-hidden rounded-xl border bg-card" aria-hidden>
+      <div className={cn('aspect-[4/5] bg-muted', cardImageBox)} />
+      <div className="space-y-2.5 p-4">
+        <div className="h-3.5 w-28 rounded bg-muted" />
         <div className="h-5 w-3/4 rounded bg-muted" />
-        <div className="h-3 w-1/2 rounded bg-muted" />
-        <div className="h-4 w-full rounded bg-muted" />
-        <div className="h-9 w-full rounded-lg bg-muted" />
+        <div className="h-3.5 w-1/2 rounded bg-muted" />
+        <div className="flex justify-between pt-3">
+          <div className="h-4 w-14 rounded bg-muted" />
+          <div className="h-4 w-20 rounded bg-muted" />
+        </div>
       </div>
     </div>
   );
@@ -57,130 +67,145 @@ function SkeletonCard() {
 interface EventCardProps {
   event: Event;
   isBooked: boolean;
-  isGuest: boolean;
-  isApproved: boolean;
+  showCategory: boolean;
   isPast?: boolean;
 }
 
-function EventCard({ event, isBooked, isGuest, isApproved, isPast = false }: EventCardProps) {
+function EventCard({ event, isBooked, showCategory, isPast = false }: EventCardProps) {
   const [imgRatio, setImgRatio] = useState<number | null>(null);
   const [imgError, setImgError] = useState(false);
-  const spotsLeft = event.capacity - event.booked_count;
-  const isSoldOut = spotsLeft <= 0;
+  const availability = getAvailability(event.capacity, event.booked_count);
   const categoryLabel = event.event_categories?.name ?? event.category;
-  const categoryColor = event.event_categories?.color_code;
   const aspectClass = getCardAspect(imgRatio);
 
   return (
     <Link
       to={`/events/${event.id}`}
-      className={cn(
-        'flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm',
-        'transition-shadow hover:shadow-md',
-        isPast && 'opacity-65',
-      )}
+      className="group flex flex-col overflow-hidden rounded-xl border bg-card transition-colors hover:border-foreground/25"
     >
-      {event.image_url && !imgError ? (
-        <div className={cn('relative w-full shrink-0 overflow-hidden bg-muted', aspectClass, 'md:aspect-auto md:h-44')}>
+      <div className={cn('relative w-full shrink-0 overflow-hidden bg-muted', aspectClass, cardImageBox)}>
+        {event.image_url && !imgError ? (
           <img
             src={event.image_url}
-            alt={event.title}
+            alt=""
+            loading="lazy"
+            decoding="async"
             onLoad={(e) => setImgRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
             onError={() => setImgError(true)}
-            className="h-full w-full object-contain transition-transform duration-300 hover:scale-105 md:object-cover"
+            className={cn('h-full w-full object-contain md:object-cover', isPast && 'grayscale')}
           />
-          {isPast && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/60">
-              <span className="rounded-full border bg-background px-3 py-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                Tamamlandı
-              </span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className={cn('flex shrink-0 items-center justify-center bg-muted', aspectClass, 'md:aspect-auto md:h-44')}>
-          <CalendarDays className="h-10 w-10 text-muted-foreground/30" />
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <CalendarDays className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+          </div>
+        )}
+      </div>
 
-      <div className="flex flex-1 flex-col space-y-3 p-4">
-        {/* Category + spots row */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {categoryLabel ? (
-            <span
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-              style={categoryColor ? { backgroundColor: `${categoryColor}1A`, color: categoryColor } : undefined}
-            >
-              <Tag className="h-3 w-3" />
-              {categoryLabel}
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-center gap-3 text-sm">
+          <time dateTime={event.event_date} className="shrink-0 font-medium text-foreground">
+            {formatEventDay(event.event_date)}, {formatEventTime(event.event_date)}
+          </time>
+          {showCategory && categoryLabel && (
+            <span className="ml-auto flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={categoryDotStyle(event.event_categories?.color_code)} />
+              <span className="truncate">{categoryLabel}</span>
             </span>
-          ) : (
-            <span />
-          )}
-
-          {!isPast && (
-            isSoldOut ? (
-              <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-semibold text-destructive">
-                Kontenjan Doldu
-              </span>
-            ) : (
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                {spotsLeft} kontenjan kaldı
-              </span>
-            )
           )}
         </div>
 
-        <h3 className="line-clamp-2 font-semibold leading-snug text-foreground">{event.title}</h3>
+        <h3 className={cn(
+          'mt-1.5 line-clamp-2 break-words text-pretty text-base font-semibold leading-snug',
+          isPast ? 'text-muted-foreground' : 'text-foreground',
+        )}>
+          {event.title}
+        </h3>
 
-        {/* Location + price row */}
-        <div className="flex items-center justify-between gap-2">
-          {event.location ? (
-            <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{event.location}</span>
-            </span>
-          ) : <span />}
-          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-sm font-bold text-primary">
-            {formatPrice(event.price)}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-          {formatDateTime(event.event_date, 'short')}
-        </div>
-
-        {event.description && (
-          <p className="line-clamp-2 text-sm text-muted-foreground">{event.description}</p>
+        {event.location && (
+          <p className="mt-1 flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{event.location}</span>
+          </p>
         )}
 
-        {/* Status CTA — pinned to bottom; non-interactive, card handles navigation */}
-        <div className="mt-auto pt-1">
-          {isPast ? null : isBooked ? (
-            <div className="rounded-lg bg-green-500/10 px-4 py-2 text-center text-sm font-medium text-green-600 dark:text-green-400">
-              ✓ Kaydınız alındı
-            </div>
-          ) : isGuest ? (
-            <div className="w-full rounded-lg bg-primary px-4 py-2 text-center text-sm font-semibold text-primary-foreground">
-              Rezervasyon Yap →
-            </div>
-          ) : !isApproved ? (
-            <div className="rounded-lg border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
-              Onay Bekleniyor
-            </div>
-          ) : isSoldOut ? (
-            <div className="rounded-lg bg-muted px-4 py-2 text-center text-sm font-semibold text-muted-foreground">
-              Kontenjan Doldu
-            </div>
+        <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-sm">
+          <span className="font-semibold tabular-nums text-foreground">{formatPrice(event.price)}</span>
+          {isPast ? (
+            <span className="text-muted-foreground">Tamamlandı</span>
+          ) : isBooked ? (
+            <span className="flex items-center gap-1 font-medium text-success">
+              <Check className="h-4 w-4" aria-hidden />
+              Rezervasyonunuz var
+            </span>
           ) : (
-            <div className="w-full rounded-lg bg-primary px-4 py-2 text-center text-sm font-semibold text-primary-foreground">
-              Rezervasyon Yap →
-            </div>
+            <span className={cn('font-medium tabular-nums', availabilityToneClass[availability.tone])}>
+              {availability.label}
+            </span>
           )}
         </div>
       </div>
     </Link>
+  );
+}
+
+// ── Category tabs ─────────────────────────────────────────────────────────────
+// Neutral tabs; the DB colour is only a small muted dot. Selection is shown by
+// an ink fill, a check icon replacing the dot, and heavier weight — never by
+// colour alone. No scale transforms: scaling a bordered, rounded element makes
+// the browser resample its edge and text, which is what looked pixelated.
+
+interface CategoryTabsProps {
+  categories: string[];
+  colors: Map<string, string>;
+  selected: string;
+  onSelect: (cat: string) => void;
+}
+
+function CategoryTabs({ categories, colors, selected, onSelect }: CategoryTabsProps) {
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    refs.current[selected]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  }, [selected]);
+
+  return (
+    <div
+      role="group"
+      aria-label="Kategoriler"
+      className={cn(
+        '-mx-4 flex gap-2 overflow-x-auto px-4 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        // Edge fade lives inside the padding, so it never covers the first/last tab
+        '[mask-image:linear-gradient(to_right,transparent,black_1rem,black_calc(100%-1rem),transparent)]',
+        'lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 lg:[mask-image:none]',
+      )}
+    >
+      {categories.map((cat) => {
+        const isSelected = selected === cat;
+        const label = cat === ALL ? 'Tümü' : cat;
+        return (
+          <button
+            key={cat}
+            ref={(el) => { refs.current[cat] = el; }}
+            type="button"
+            aria-pressed={isSelected}
+            onClick={() => onSelect(cat)}
+            className={cn(
+              'inline-flex h-10 shrink-0 select-none items-center gap-2 rounded-lg border px-3.5 text-sm transition-colors md:h-9',
+              isSelected
+                ? 'border-foreground bg-foreground font-semibold text-background'
+                : 'border-border bg-background text-foreground/80 hover:bg-muted hover:text-foreground',
+            )}
+          >
+            {isSelected ? (
+              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            ) : cat !== ALL ? (
+              <span className="h-2 w-2 shrink-0 rounded-full" style={categoryDotStyle(colors.get(cat))} aria-hidden />
+            ) : null}
+            <span>{label}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -193,13 +218,19 @@ export default function UserFeed() {
   const [myReservations, setMyReservations] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showLeftFade, setShowLeftFade] = useState(false);
-  const [showRightFade, setShowRightFade] = useState(true);
-  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const categoryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // Filters live in the URL so returning from an event keeps them (and they can be shared).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedCategory = searchParams.get('kategori') ?? ALL;
+  const searchQuery = searchParams.get('q') ?? '';
+
+  function setFilter(key: 'kategori' | 'q', value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (!value || (key === 'kategori' && value === ALL)) next.delete(key);
+      else next.set(key, value);
+      return next;
+    }, { replace: true });
+  }
 
   const eventSelect =
     'id, title, description, image_url, event_date, capacity, booked_count, category, price, location, status, event_categories(name, color_code)';
@@ -262,207 +293,149 @@ export default function UserFeed() {
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
-  const now = new Date();
-  const isGuest = !profile;
-
-  const categoryColorByName = new Map<string, string>();
-  for (const e of events) {
-    const name = e.event_categories?.name ?? e.category;
-    if (name && e.event_categories?.color_code && !categoryColorByName.has(name)) {
-      categoryColorByName.set(name, e.event_categories.color_code);
+  const { categories, categoryColors } = useMemo(() => {
+    const colors = new Map<string, string>();
+    const names = new Set<string>();
+    for (const e of events) {
+      const name = e.event_categories?.name ?? e.category;
+      if (!name) continue;
+      names.add(name);
+      if (e.event_categories?.color_code && !colors.has(name)) colors.set(name, e.event_categories.color_code);
     }
-  }
+    return { categories: [ALL, ...names], categoryColors: colors };
+  }, [events]);
 
-  const categories = [
-    'All',
-    ...Array.from(
-      new Set(
-        events
-          .map((e) => e.event_categories?.name ?? e.category)
-          .filter((c): c is string => Boolean(c)),
-      ),
-    ),
-  ];
-
-  // ── Category scroll effects ───────────────────────────────────────────────
-
-  // Recalculate fade visibility whenever the category list changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setShowLeftFade(el.scrollLeft > 0);
-    setShowRightFade(el.scrollWidth > el.clientWidth + el.scrollLeft);
-  }, [categories]);
-
-  // Glide the active category button into the center of the scroll row
-  useEffect(() => {
-    categoryRefs.current[selectedCategory]?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'center',
-    });
-  }, [selectedCategory]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const searchLower = searchQuery.toLowerCase().trim();
+  const now = new Date();
+  const searchLower = searchQuery.toLocaleLowerCase('tr-TR').trim();
+  const hasCategory = selectedCategory !== ALL;
+  const hasFilter = hasCategory || searchLower !== '';
 
   const filtered = events.filter((e) => {
     const eventCategory = e.event_categories?.name ?? e.category;
-    const categoryMatch = selectedCategory === 'All' || eventCategory === selectedCategory;
+    const categoryMatch = !hasCategory || eventCategory === selectedCategory;
     const searchMatch =
       !searchLower ||
-      e.title.toLowerCase().includes(searchLower) ||
-      (e.description?.toLowerCase().includes(searchLower) ?? false);
+      e.title.toLocaleLowerCase('tr-TR').includes(searchLower) ||
+      (e.description?.toLocaleLowerCase('tr-TR').includes(searchLower) ?? false);
     return categoryMatch && searchMatch;
   });
 
   const upcoming = filtered.filter((e) => new Date(e.event_date) > now);
   const past = filtered.filter((e) => new Date(e.event_date) <= now);
 
-  const isApproved = profile?.approval_status === 'approved';
+  function clearFilters() {
+    setSearchParams({}, { replace: true });
+  }
+
+  const query = searchQuery.trim();
+  const filterDescription = hasCategory && query
+    ? `${selectedCategory} kategorisinde “${query}”`
+    : hasCategory
+      ? `${selectedCategory} kategorisi`
+      : `“${query}” araması`;
+
+  const grid = 'grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3';
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-16 pt-6">
-      {/* Search bar */}
+    <main className="mx-auto max-w-6xl px-4 pb-16 pt-4 sm:pt-6">
+      <h1 className="sr-only">Etkinlikler</h1>
+
       {!loading && !error && (
-        <div className="relative z-20 mb-4">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Başlık veya açıklamaya göre etkinlik ara…"
-            className={
-              'w-full rounded-xl border border-input bg-background py-2.5 pl-9 pr-4 text-sm ' +
-              'text-foreground placeholder:text-muted-foreground focus:outline-none ' +
-              'focus:ring-2 focus:ring-ring focus:ring-offset-1 transition'
-            }
-          />
-        </div>
-      )}
-
-      {/* Category filter bar */}
-      {!loading && !error && categories.length > 1 && (
-        <div className="relative -mx-4 mb-6">
-          {/* Left edge fade — appears once user scrolls away from start */}
-          <div
-            className={cn(
-              'pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-8 bg-gradient-to-r from-background to-transparent transition-opacity',
-              showLeftFade ? 'opacity-100' : 'opacity-0',
-            )}
-          />
-
-          {/* Scrollable row */}
-          <div
-            ref={scrollRef}
-            className="overflow-x-auto px-4 scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            onScroll={(e) => {
-              const el = e.currentTarget;
-              setShowLeftFade(el.scrollLeft > 8);
-              setShowRightFade(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
-            }}
-          >
-            <div className="flex gap-2 py-1" style={{ width: 'max-content' }}>
-              {categories.map((cat) => {
-                const isSelected = selectedCategory === cat;
-                const isHovered = hoveredCategory === cat;
-                const color = cat === 'All' ? null : (categoryColorByName.get(cat) ?? null);
-
-                return (
-                  <button
-                    key={cat}
-                    ref={(el) => { categoryRefs.current[cat] = el; }}
-                    onClick={() => setSelectedCategory(cat)}
-                    onMouseEnter={() => setHoveredCategory(cat)}
-                    onMouseLeave={() => setHoveredCategory(null)}
-                    className={cn(
-                      'relative z-0 hover:z-30 focus-visible:z-30',
-                      'transform whitespace-nowrap select-none cursor-pointer rounded-full border px-4 py-1.5',
-                      'text-sm font-medium transition-all duration-200 active:scale-95 hover:scale-105 hover:shadow-md',
-                      // Fallback (no color_code / the "All" pill): standard theme styling
-                      !color &&
-                        (isSelected
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground'),
-                      color && isSelected && 'shadow-sm',
-                    )}
-                    style={
-                      color
-                        ? isSelected
-                          ? { backgroundColor: color, borderColor: color, color: '#fff' }
-                          : {
-                              borderColor: color,
-                              color,
-                              backgroundColor: isHovered ? `${color}15` : 'transparent',
-                            }
-                        : undefined
-                    }
-                  >
-                    {cat === 'All' ? 'Tümü' : cat}
-                  </button>
-                );
-              })}
-            </div>
+        <div className="mb-5 space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setFilter('q', e.target.value)}
+              placeholder="Etkinlik ara"
+              aria-label="Etkinliklerde başlık veya açıklamaya göre ara"
+              name="q"
+              autoComplete="off"
+              enterKeyHint="search"
+              className="h-11 w-full rounded-lg border border-input bg-background pl-10 pr-3 text-base text-foreground placeholder:text-muted-foreground sm:text-sm"
+            />
           </div>
 
-          {/* Right edge fade — indicates more categories off-screen to the right */}
-          <div
-            className={cn(
-              'pointer-events-none absolute bottom-0 right-0 top-0 z-10 w-8 bg-gradient-to-l from-background to-transparent transition-opacity',
-              showRightFade ? 'opacity-100' : 'opacity-0',
-            )}
-          />
+          {categories.length > 1 && (
+            <CategoryTabs
+              categories={categories}
+              colors={categoryColors}
+              selected={selectedCategory}
+              onSelect={(cat) => setFilter('kategori', cat)}
+            />
+          )}
         </div>
       )}
 
-      {/* Skeleton loaders */}
       {loading && (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <div className={grid} aria-busy="true" aria-label="Etkinlikler yükleniyor">
           {[0, 1, 2, 3, 4, 5].map((i) => <SkeletonCard key={i} />)}
         </div>
       )}
 
-      {/* Error state */}
       {!loading && error && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-center">
           <p className="text-sm text-destructive">{error}</p>
           <button
             onClick={fetchData}
-            className="mt-3 text-sm text-primary underline-offset-4 hover:underline"
+            className="mt-3 text-sm font-medium text-foreground underline underline-offset-4"
           >
             Tekrar dene
           </button>
         </div>
       )}
 
-      {/* Content */}
       {!loading && !error && (
         <>
-          <section>
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Yaklaşan Etkinlikler
-            </h2>
+          <section aria-labelledby="upcoming-heading">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1" aria-live="polite">
+              <h2 id="upcoming-heading" className="text-lg font-semibold text-foreground">
+                Yaklaşan etkinlikler
+                <span className="ml-2 text-sm font-normal tabular-nums text-muted-foreground">{upcoming.length}</span>
+              </h2>
+              {hasFilter && (
+                <p className="flex w-full min-w-0 items-baseline justify-between gap-3 text-sm text-muted-foreground sm:w-auto">
+                  <span className="min-w-0 truncate">{filterDescription}</span>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="shrink-0 py-1 font-medium text-foreground underline underline-offset-4"
+                  >
+                    Filtreleri temizle
+                  </button>
+                </p>
+              )}
+            </div>
+
             {upcoming.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                {searchQuery
-                  ? `"${searchQuery}" ile eşleşen yaklaşan etkinlik yok.`
-                  : selectedCategory !== 'All'
-                    ? `"${selectedCategory}" kategorisinde yaklaşan etkinlik yok.`
-                    : 'Yaklaşan etkinlik yok.'}
-              </p>
+              <div className="rounded-xl border border-dashed px-6 py-12 text-center">
+                <p className="text-sm font-medium text-foreground">
+                  {hasFilter ? `${filterDescription} için yaklaşan etkinlik yok.` : 'Şu an yaklaşan etkinlik yok.'}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {hasFilter ? 'Başka bir kategori seçin ya da aramayı değiştirin.' : 'Yeni etkinlikler eklendiğinde burada görünecek.'}
+                </p>
+                {hasFilter && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-4 h-10 rounded-lg border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                  >
+                    Tüm etkinlikleri göster
+                  </button>
+                )}
+              </div>
             ) : (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+              <div className={grid}>
                 {upcoming.map((event) => (
                   <EventCard
                     key={`${event.id}:${event.image_url ?? ''}`}
                     event={event}
                     isBooked={myReservations.has(event.id)}
-                    isGuest={isGuest}
-                    isApproved={isApproved}
+                    showCategory={!hasCategory}
                   />
                 ))}
               </div>
@@ -470,18 +443,18 @@ export default function UserFeed() {
           </section>
 
           {past.length > 0 && (
-            <section className="mt-12">
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Geçmiş Etkinlikler
+            <section className="mt-12" aria-labelledby="past-heading">
+              <h2 id="past-heading" className="mb-3 text-lg font-semibold text-foreground">
+                Geçmiş etkinlikler
+                <span className="ml-2 text-sm font-normal tabular-nums text-muted-foreground">{past.length}</span>
               </h2>
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+              <div className={grid}>
                 {past.map((event) => (
                   <EventCard
                     key={`${event.id}:${event.image_url ?? ''}`}
                     event={event}
                     isBooked={myReservations.has(event.id)}
-                    isGuest={isGuest}
-                    isApproved={isApproved}
+                    showCategory={!hasCategory}
                     isPast
                   />
                 ))}

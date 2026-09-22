@@ -19,9 +19,9 @@ export default function UserLayout() {
 
   function navClass({ isActive }: { isActive: boolean }) {
     return cn(
-      'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
+      'flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors sm:px-3',
       isActive
-        ? 'bg-primary/10 text-primary'
+        ? 'bg-muted text-foreground'
         : 'text-muted-foreground hover:bg-muted hover:text-foreground',
     );
   }
@@ -29,23 +29,23 @@ export default function UserLayout() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center gap-1 px-4 py-3">
-          <span className="mr-auto text-lg font-bold text-foreground">L&apos;Ayk</span>
+        <div className="mx-auto flex max-w-6xl items-center gap-0.5 px-4 py-2 sm:gap-1">
+          <Link to="/" className="mr-auto rounded text-lg font-semibold tracking-tight text-foreground">L&apos;Ayk</Link>
 
-          <NavLink to="/" end className={navClass}>
+          <NavLink to="/" end className={navClass} aria-label="Keşfet">
             <CalendarDays className="h-4 w-4" />
             <span className="hidden sm:inline">Keşfet</span>
           </NavLink>
 
           {!isGuest && (
-            <NavLink to="/my-bookings" className={navClass}>
+            <NavLink to="/my-bookings" className={navClass} aria-label="Rezervasyonlarım">
               <Bookmark className="h-4 w-4" />
               <span className="hidden sm:inline">Rezervasyonlarım</span>
             </NavLink>
           )}
 
           {!isGuest && (
-            <NavLink to="/profile" className={navClass}>
+            <NavLink to="/profile" className={navClass} aria-label="Profilim">
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">Profilim</span>
             </NavLink>
@@ -55,7 +55,7 @@ export default function UserLayout() {
 
           <button
             onClick={toggleTheme}
-            className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Görsel tema tercihini değiştir"
           >
             {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
@@ -66,14 +66,15 @@ export default function UserLayout() {
           {isGuest ? (
             <Link
               to="/login"
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+              className="ml-1 flex h-10 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
             >
-              Giriş Yap
+              Giriş yap
             </Link>
           ) : (
             <button
               onClick={handleSignOut}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              aria-label="Çıkış yap"
+              className="flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
             >
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">Çıkış Yap</span>
