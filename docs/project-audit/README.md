@@ -38,7 +38,7 @@ Bu dizin, **Layk Event Platform** projesinin müşteri teslimine hazırlanması 
   - `apps/web`: React 19 + Vite 8 + Tailwind CSS v4 Single Page Application.
   - `packages/core`: `@layk/core` paylaşılan Supabase istemcisi, auth hook'u ve formatlayıcılar.
   - `supabase/migrations`: 0001 - 0030 arası tüm SQL şema ve güvenlik migration'ları.
-  - `supabase/functions`: Deno Edge Functions (`send-booking-sms`, `send-push`).
+  - `supabase/functions`: Deno Edge Functions (`send-booking-sms`, `send-push`). *(2026-09-29: kaldırıldı — yalnızca uygulama içi bildirim; bkz. findings.md)*
   - Kök yapılandırmalar (`package.json`, `turbo.json`, `vercel.json`, `app.json`, `tsconfig.json`).
   - `scripts/`: Demo veri yenileme, görsel yükleme ve test betikleri.
 - **Kapsam Dışı:**

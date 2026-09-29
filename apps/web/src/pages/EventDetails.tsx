@@ -55,6 +55,17 @@ interface PublicAttendee {
 
 const ATTENDEE_STACK_LIMIT = 5;
 
+// Maps book_event / sync_booked_count errors (migrations 0015, 0031) to user-facing text.
+function bookingErrorMessage(message: string) {
+  const msg = message.toLowerCase();
+  if (msg.includes('not approved')) return 'Hesabınız onaylanmadığı için rezervasyon yapamazsınız.';
+  if (msg.includes('not open for booking')) return 'Bu etkinlik artık rezervasyona açık değil.';
+  if (msg.includes('fully booked') || msg.includes('not enough capacity')) return 'Bu etkinlikte yeterli boş yer yok.';
+  if (msg.includes('already booked')) return 'Bu etkinlik için zaten aktif bir rezervasyonunuz var.';
+  if (msg.includes('exceed')) return 'Kullanıcı başına bilet limitinden fazla rezervasyon yapamazsınız.';
+  return message;
+}
+
 function AttendeeStack({ attendees, onOpen }: { attendees: PublicAttendee[]; onOpen: () => void }) {
   const visible = attendees.slice(0, ATTENDEE_STACK_LIMIT);
   const remainder = attendees.length - visible.length;
@@ -335,13 +346,7 @@ export default function EventDetails() {
     });
 
     if (rpcError) {
-      const msg = rpcError.message.toLowerCase();
-      toast.error(
-        msg.includes('fully booked') ? 'Bu etkinlik tamamen dolu.'
-          : msg.includes('already booked') ? 'Bu etkinlik için zaten aktif bir rezervasyonunuz var.'
-          : msg.includes('exceed') ? 'Kullanıcı başına bilet limitinden fazla rezervasyon yapamazsınız.'
-          : rpcError.message,
-      );
+      toast.error(bookingErrorMessage(rpcError.message));
     } else {
       toast.success(`${selectedSeats} kişilik rezervasyon onaylandı!`);
       await fetchData(event.id, profile.id);
@@ -359,7 +364,7 @@ export default function EventDetails() {
       .eq('id', reservation.id);
 
     if (updateError) {
-      toast.error(updateError.message);
+      toast.error(bookingErrorMessage(updateError.message));
     } else {
       toast.success(`${selectedSeats} kişilik olarak güncellendi.`);
       await fetchData(event.id, profile.id);

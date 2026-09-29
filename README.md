@@ -1,6 +1,6 @@
 # L'Ayk — Etkinlik Rezervasyon Platformu
 
-React (Vite) tek sayfa web uygulaması + Supabase (Postgres, Auth, Realtime, Storage, Edge Functions).
+React (Vite) tek sayfa web uygulaması + Supabase (Postgres, Auth, Realtime, Storage).
 Kullanıcılar etkinlikleri keşfeder, rezervasyon yapar ve destek talebi açar; yöneticiler kullanıcı onayı,
 etkinlik, duyuru ve destek yönetimini `/admin` altında yapar.
 
@@ -16,7 +16,6 @@ apps/web/            React 19 + Vite 8 + TypeScript + Tailwind CSS v4 (Vercel'e 
   src/lib/           Saf yardımcılar (tarih/doluluk gösterimi, kullanıcı adı, görsel işleme)
 packages/core/       @layk/core — Supabase istemcisi, AuthProvider/useAuth, cn, format yardımcıları
 supabase/migrations/ Numaralı SQL migration'ları (şemanın tek kaynağı)
-supabase/functions/  Deno Edge Functions (send-booking-sms, send-push)
 scripts/             Demo veri ve görsel bakım betikleri — bkz. scripts/README.md
 docs/project-audit/  Teslim öncesi inceleme raporları ve bulgu durumları
 ```
@@ -42,9 +41,12 @@ npm run dev          # yalnızca web (turbo dev --filter=web) → http://localho
 | `npm run build` / `npm run build:web` | `tsc -b && vite build` → `apps/web/dist` |
 | `npm run lint` | ESLint (web) |
 | `npx tsc --noEmit -p packages/core` | Core tip kontrolü |
+| `npm run test:db` | Migration testleri: `supabase/tests/` — geçici, yerel gerçek PostgreSQL sunucusunda tüm migration'lar sırayla uygulanır (rezervasyon yetkisi, kapasite yarışı, uygulama içi bildirimler, dış gönderim olmaması) |
 | `node scripts/refresh-demo-data.test.js`, `node scripts/upload-event-images.test.js` | Betiklerin saf-fonksiyon testleri |
 
-Web ve core için ayrı bir test koşucusu (Jest/Vitest) yoktur.
+Web ve core için ayrı bir test koşucusu (Jest/Vitest) yoktur. `test:db` ilk çalıştırmada `embedded-postgres`
+ikili dosyalarını kullanır (Docker gerekmez); uzak veritabanına bağlanmaz. Supabase'in auth/storage/pg_net parçaları
+taklittir; olası dış HTTP çağrıları yalnızca bir tabloya yazılır ve testler bunun boş kaldığını doğrular — ayrıntı: `supabase/tests/db-harness.mjs`.
 
 ## Ortam değişkenleri
 
@@ -54,17 +56,21 @@ Değerleri repoya koymayın; `*.local` dosyaları git tarafından yok sayılır.
 | :--- | :--- | :--- | :--- |
 | `VITE_SUPABASE_URL` | Web (build anında gömülür) | Hayır | Supabase proje URL'i |
 | `VITE_SUPABASE_ANON_KEY` | Web (build anında gömülür) | Hayır — publishable/anon anahtar, tarayıcı paketinde görünür | Supabase istemci anahtarı; yetki RLS ile sınırlanır |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yalnızca yerel betikler (`scripts/`) ve Edge Functions | **Evet** — RLS'i aşar | Demo veri/görsel bakımı; **asla** `VITE_` önekiyle veya Vercel'e koymayın |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | `upload-event-images.js` (alternatif adlar), Edge Functions | URL/anon: hayır | Betik/fonksiyon içinde proje bağlantısı |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yalnızca yerel betikler (`scripts/`) | **Evet** — RLS'i aşar | Demo veri/görsel bakımı; **asla** `VITE_` önekiyle veya Vercel'e koymayın |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | `upload-event-images.js` (alternatif adlar) | URL/anon: hayır | Betik içinde proje bağlantısı |
 | `EVENT_IMAGES_DIR` | `upload-event-images.js` | Hayır | Yüklenecek banner görsellerinin yerel klasörü |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Edge Function `send-booking-sms` (Supabase secrets) | **Evet** | SMS sağlayıcısı; tanımlı değilse fonksiyon yalnızca log yazar (stub) |
-
-Veritabanı trigger'ları ayrıca Postgres ayarlarını bekler: `app.supabase_project_ref`, `app.supabase_service_role_key`
-(SMS/push webhook'ları için; Supabase panelinde yönetilir, repoda değer yoktur).
 
 **Eksik değişken davranışı:** `vite build`, `VITE_SUPABASE_URL` veya `VITE_SUPABASE_ANON_KEY` yoksa değişken adını
 belirten bir hatayla durur (değer loglanmaz). Geliştirme sunucusunda aynı durumda uygulama açılışta açık bir hata fırlatır.
 Uygulamada artık sabit kodlanmış yedek proje yoktur.
+
+## Bildirimler
+
+Yalnızca **uygulama içi bildirimler** desteklenir: kayıtlar `public.notifications` tablosuna veritabanı trigger'ları
+(yeni etkinlik, etkinlik iptali, kapasite uyarısı, destek yanıtı) ve admin ekranları (duyuru, kullanıcı detayı) tarafından
+yazılır; web'deki bildirim zili bunları Supabase Realtime ile günceller. Kullanıcı yalnızca kendi bildirimlerini görür,
+okundu işaretler ve siler (RLS). SMS, WhatsApp ve mobil/web push gönderimi **yoktur** — `0032` dış gönderim trigger'larını
+kaldırdı; Edge Function yoktur. `users.push_token` kolonu eski veriyi korumak için duruyor, kullanılmıyor.
 
 ## Deploy (Vercel)
 
@@ -84,8 +90,11 @@ Service-role anahtarı Vercel'e eklenmez.
 - RLS politikaları genellikle `DROP POLICY IF EXISTS` + `CREATE POLICY` ile bütünüyle yeniden tanımlanır.
 - Uygulama: gözden geçirdikten sonra Supabase CLI (`supabase link`, `supabase db push`) veya panelin SQL Editor'ü.
   Hangi migration'ların uzak veritabanında uygulandığı bu repodan doğrulanamaz; deploy öncesi panelden kontrol edin.
+- `supabase/checks/verify_0031_0032.sql`: SQL Editor'da çalıştırılacak salt okunur doğrulama (0031 + 0032); `HATA` satırı
+  olmamalı. `npm run test:db` aynı sorguyu yerel veritabanında da çalıştırır.
 
 ## Bilinen açık konular
 
-Öncelikli açık bulgular (rezervasyon yetkisi SEC-001, kapanmış etkinliğe rezervasyon BUG-001, taslak etkinlik bildirimi
-BUG-003, iptal akışı BUG-002) için bkz. [docs/project-audit/findings.md](docs/project-audit/findings.md).
+SEC-001 (rezervasyon yetkisi), BUG-001 (kapanmış etkinliğe rezervasyon) ve BUG-003 (taslak etkinlik bildirimi)
+`0031_booking_guards_and_publish_notification.sql` ile düzeltildi; migration uzak veritabanına uygulanana kadar canlıda
+açık sayılmalıdır. İptal akışı (BUG-002) açıktır. Ayrıntı: `docs/project-audit/findings.md` (yerel, git'te yok sayılır).

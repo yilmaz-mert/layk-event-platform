@@ -11,9 +11,12 @@
     "build": "turbo build --filter=web",
     "dev": "turbo dev --filter=web",
     "lint": "turbo lint",
-    "build:web": "turbo build --filter=web"
+    "build:web": "turbo build --filter=web",
+    "test:db": "node --test --test-concurrency=1 supabase/tests/*.test.mjs"
   },
   "devDependencies": {
+    "embedded-postgres": "^18.4.0-beta.17",
+    "pg": "^8.23.0",
     "turbo": "^2.5.4"
   },
   "overrides": {

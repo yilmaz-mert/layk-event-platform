@@ -56,6 +56,41 @@ Doğrulama: yerel/geçici bir Postgres'te pending kullanıcı, iptal/geçmiş/ta
 
 ---
 
+## Durum Güncellemesi — 2026-09-29 (SEC-001 / BUG-001 / BUG-003 düzeltmesi)
+
+Düzeltme: `supabase/migrations/0031_booking_guards_and_publish_notification.sql` (**uzak veritabanına uygulanmadı**).
+Doğrulama: `npm run test:db` — geçici yerel **gerçek PostgreSQL 18** sunucusunda 0001–0031 sırayla uygulanır; 33 test.
+Düzeltmeden önce 18 test kırmızıydı (hata belirtisini doğrudan yakalıyor), sonra 33/33 yeşil (3 ardışık koşu).
+
+| ID | Yeni durum | Kök neden → düzeltme |
+| :--- | :--- | :--- |
+| SEC-001 | **Kodda çözüldü** | `book_event` onayı kontrol etmiyordu; ek olarak kullanıcılar `reservations` UPDATE politikasıyla iptali geri alıp bilet artırabiliyordu. Artık onay + etkinlik durumu tek yardımcıda (`assert_booking_allowed`) ve hem `book_event`'te hem `sync_booked_count`'un koltuk talep eden dallarında (etkinlik satırı kilitliyken) kontrol ediliyor. Doğrudan `cancelled → confirmed` normal kullanıcıya kapalı (yeniden alma yalnızca `book_event` ile). |
+| SEC-001 (ek, kritik) | **Kodda çözüldü** | Denetimde yoktu: `protect_user_privileges` (0011) SECURITY DEFINER olduğu için içindeki `current_user IN ('postgres', …)` her zaman doğruydu; her oturum açmış kullanıcı kendi satırında `role = 'admin'`, `approval_status = 'approved'` yapabiliyordu (gerçek Postgres'te yeniden üretildi). Fonksiyon SECURITY INVOKER yapıldı. |
+| BUG-001 | **Kodda çözüldü** | Rezervasyon ve bilet değişikliği yalnızca `status = 'active' AND is_published AND NOT is_archived AND event_date > now()` iken. |
+| BUG-003 | **Kodda çözüldü** | Yeni kolon `events.new_event_notified_at` kalıcı işaret; bildirim etkinlik ilk kez yayında + aktif + arşivsiz + gelecekte olduğunda bir kez gider (yayında oluşturma veya taslaktan ilk yayın). Mevcut satırlar "bildirildi" işaretlendi (eski trigger zaten oluşturmada bildirmişti) — bu yüzden migration öncesinden kalan bir taslak sonradan yayına alınırsa yeniden bildirim gitmez. |
+
+Korunan admin istisnaları (0015 ile aynı): admin başka kullanıcı adına, kapasite/limit üstünde ve kapalı etkinliğe
+rezervasyon yapabilir, doğrudan bilet değiştirebilir, iptal edip yeniden etkinleştirebilir. Etkinlik iptalinde mevcut
+rezervasyonlar (BUG-002) bu düzeltmenin kapsamı dışında.
+
+Test sınırları: Supabase platformu taklit — `auth.uid()` PostgREST'in `request.jwt.claim(s)` ayarlarından okunur
+(JWT imzası/GoTrue yok); PostgREST çalışmaz, istek başına işlem + `SET LOCAL ROLE authenticated` elle yapılır;
+pg_net/http uzantıları yok, `net.http_post` yalnızca tabloya yazar. Roller, RLS, trigger'lar, kilitler ve eşzamanlı
+bağlantılar gerçektir. Sürüm farkı: testler PG 18, Supabase projesi büyük olasılıkla PG 15/17.
+
+Yan gözlem: `app.supabase_project_ref` tanımlı değilse `trigger_send_booking_sms` URL'i NULL oluyor ve 0024'teki
+`extensions.http_post` Expo push adresine gönderiyordu — kapsam değişikliğiyle zincirin tamamı 0032'de kaldırıldı.
+
+## Durum Güncellemesi — 2026-09-29 (kapsam: yalnızca uygulama içi bildirim)
+
+SMS, WhatsApp ve mobil push kapsamdan çıkarıldı. `0032_disable_external_push_and_sms.sql` (uzağa **uygulanmadı**)
+`trg_send_push_on_notification`, `trg_send_booking_sms_on_reservation`, ilgili iki fonksiyonu ve projeye ait
+`extensions.http_post(text, text, text, text)` sarmalayıcısını (anon/authenticated'a açık bir dış HTTP kapısıydı) kaldırır.
+Korunanlar: `notifications` tablosu + RLS, Realtime yayını, yeni etkinlik / iptal / kapasite / destek yanıtı trigger'ları,
+admin doğrudan bildirim ekleme, `users.push_token` (veri kaybı olmasın diye). `supabase/functions/` kaynakları silindi.
+Doğrulama: `npm run test:db` 41/41 (PG 18, 17, 15); 0032 çıkarılınca 3 test kırmızı. **INT-001 geçersiz** (özellik kaldırıldı).
+Bu klasördeki diğer raporlar (database-map, feature-map, mobile-removal, verification-plan) o tarihteki durumu anlatır.
+
 ## Ayrıntılı Bulgular
 
 ### SEC-001: `book_event` RPC'sinde `approval_status` Kontrolü Bulunmuyor
