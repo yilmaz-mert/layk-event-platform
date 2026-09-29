@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Lock, MapPin, MessageSquareQuote, Minus, Plus, Search, Users, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, MapPin, MessageSquareQuote, Minus, Plus, Search, Users, X } from 'lucide-react';
 import { supabase, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useToast } from '@/components/Toast';
@@ -259,11 +259,9 @@ export default function EventDetails() {
     if (id) fetchData(id, profile?.id);
   }, [id, profile?.id]);
 
-  // Attendees are only fetched once we know the requester qualifies (public
-  // account) — the RPC itself also enforces this server-side (see 0026), so
-  // this is purely an optimization to skip a call we know will be empty.
+  // Private attendees are filtered out server-side by the RPC (see 0030).
   useEffect(() => {
-    if (!id || !profile?.id || profile.is_private) {
+    if (!id || !profile?.id) {
       setAttendees([]);
       return;
     }
@@ -277,7 +275,7 @@ export default function EventDetails() {
         setAttendeesLoading(false);
       });
     return () => { isMounted = false; };
-  }, [id, profile?.id, profile?.is_private]);
+  }, [id, profile?.id]);
 
   useEffect(() => {
     if (reservation) setSelectedSeats(reservation.tickets_requested);
@@ -485,7 +483,7 @@ export default function EventDetails() {
       : { text: availability.label, cls: availabilityToneClass[availability.tone] };
 
   return (
-    <main className={cn('mx-auto max-w-5xl px-4 pt-2 sm:pt-4', canBook ? 'pb-28 lg:pb-16' : 'pb-16')}>
+    <main className={cn('mx-auto max-w-5xl px-4 pt-2 sm:pt-4 lg:max-w-[70rem]', canBook ? 'pb-28 lg:pb-16' : 'pb-16')}>
       <Link
         to="/"
         onClick={(e) => {
@@ -501,249 +499,241 @@ export default function EventDetails() {
         Etkinliklere dön
       </Link>
 
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-x-10">
-        {/* Poster + title */}
-        <header className="lg:col-start-1">
-          {/* Full poster is always visible: contained on a muted ground, never cropped. */}
-          {event.image_url && !bannerError ? (
-            <div className="mb-5 flex justify-center overflow-hidden rounded-xl bg-muted">
-              <img
-                src={event.image_url}
-                alt={event.title}
-                onError={() => setBannerError(true)}
-                className="max-h-[60vh] w-auto max-w-full object-contain lg:max-h-[32rem]"
-              />
-            </div>
-          ) : (
-            <div className="mb-5 flex h-40 items-center justify-center rounded-xl bg-muted sm:h-56">
-              <CalendarDays className="h-12 w-12 text-muted-foreground/30" aria-hidden />
-            </div>
-          )}
+      {/* Desktop: poster | everything else. Below lg the wrappers are plain blocks,
+          so mobile keeps its single column in the same order. */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,9fr)_minmax(0,11fr)] lg:items-start lg:gap-x-10">
+        {/* Full poster is always visible: contained, never cropped or upscaled. On desktop
+            it sits on the page itself (no muted ground) and hugs its own aspect ratio. */}
+        {event.image_url && !bannerError ? (
+          <div className="mb-5 flex justify-center overflow-hidden rounded-xl bg-muted lg:mb-0 lg:justify-start lg:rounded-none lg:bg-transparent">
+            <img
+              src={event.image_url}
+              alt={event.title}
+              onError={() => setBannerError(true)}
+              className="max-h-[60vh] w-auto max-w-full object-contain lg:max-h-[min(38rem,calc(100vh-8rem))] lg:rounded-xl"
+            />
+          </div>
+        ) : (
+          <div className="mb-5 flex h-40 items-center justify-center rounded-xl bg-muted sm:h-56 lg:mb-0 lg:h-72">
+            <CalendarDays className="h-12 w-12 text-muted-foreground/30" aria-hidden />
+          </div>
+        )}
 
-          {(categoryLabel || event.status !== 'active') && (
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-              {categoryLabel && (
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={categoryDotStyle(categoryColor)} aria-hidden />
-                  {categoryLabel}
-                </span>
-              )}
-              {event.status !== 'active' && (
-                <span className={cn('font-medium', event.status === 'cancelled' && 'text-destructive')}>
-                  {event.status === 'completed' ? 'Tamamlandı' : 'İptal edildi'}
-                </span>
-              )}
-            </div>
-          )}
-
-          <h1 className="break-words text-balance text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
-            {event.title}
-          </h1>
-
-          <dl className="mt-4 space-y-2 text-sm">
-            <div className="flex items-start gap-2.5">
-              <dt className="sr-only">Tarih</dt>
-              <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <dd className="text-foreground">
-                <time dateTime={event.event_date}>
-                  {longDayFmt.format(new Date(event.event_date))}, {formatEventTime(event.event_date)}
-                </time>
-                {canBook && relativeDay && <span className="text-muted-foreground"> ({relativeDay})</span>}
-              </dd>
-            </div>
-            {event.location && (
-              <div className="flex items-start gap-2.5">
-                <dt className="sr-only">Mekan</dt>
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <dd className="break-words text-foreground">{event.location}</dd>
+        <div>
+          <header>
+            {(categoryLabel || event.status !== 'active') && (
+              <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                {categoryLabel && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={categoryDotStyle(categoryColor)} aria-hidden />
+                    {categoryLabel}
+                  </span>
+                )}
+                {event.status !== 'active' && (
+                  <span className={cn('font-medium', event.status === 'cancelled' && 'text-destructive')}>
+                    {event.status === 'completed' ? 'Tamamlandı' : 'İptal edildi'}
+                  </span>
+                )}
               </div>
             )}
-          </dl>
-        </header>
 
-        {/* Booking panel — right after the essentials on mobile, sticky sidebar on desktop */}
-        <aside
-          ref={bookingRef}
-          id="booking"
-          aria-label="Rezervasyon"
-          tabIndex={-1}
-          className="mt-6 focus:outline-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0"
-        >
-          <div className="rounded-xl border bg-card p-5 lg:sticky lg:top-20">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-2xl font-semibold tabular-nums text-foreground">{formatPrice(event.price)}</p>
-              {statusLine && <p className={cn('text-sm font-medium', statusLine.cls)}>{statusLine.text}</p>}
-            </div>
+            <h1 className="break-words text-balance text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
+              {event.title}
+            </h1>
 
-            <div className="mt-4">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Users className="h-3.5 w-3.5" aria-hidden />
-                  Kontenjan
-                </span>
-                <span className="tabular-nums">{event.booked_count} / {event.capacity}</span>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex items-start gap-2.5">
+                <dt className="sr-only">Tarih</dt>
+                <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <dd className="text-foreground">
+                  <time dateTime={event.event_date}>
+                    {longDayFmt.format(new Date(event.event_date))}, {formatEventTime(event.event_date)}
+                  </time>
+                  {canBook && relativeDay && <span className="text-muted-foreground"> ({relativeDay})</span>}
+                </dd>
               </div>
-              <div
-                className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted"
-                role="meter"
-                aria-label="Doluluk"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={fillPct}
-              >
+              {event.location && (
+                <div className="flex items-start gap-2.5">
+                  <dt className="sr-only">Mekan</dt>
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <dd className="break-words text-foreground">{event.location}</dd>
+                </div>
+              )}
+            </dl>
+          </header>
+
+          {/* Booking panel — right after the essentials on mobile, sticky sidebar on desktop */}
+          <aside
+            ref={bookingRef}
+            id="booking"
+            aria-label="Rezervasyon"
+            tabIndex={-1}
+            className="mt-6 focus:outline-none"
+          >
+            <div className="rounded-xl border bg-card p-5 lg:p-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-2xl font-semibold tabular-nums text-foreground">{formatPrice(event.price)}</p>
+                {statusLine && <p className={cn('text-sm font-medium', statusLine.cls)}>{statusLine.text}</p>}
+              </div>
+
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" aria-hidden />
+                    Kontenjan
+                  </span>
+                  <span className="tabular-nums">{event.booked_count} / {event.capacity}</span>
+                </div>
                 <div
-                  className={cn(
-                    'h-full rounded-full',
-                    availability.tone === 'full' ? 'bg-destructive' : availability.tone === 'low' ? 'bg-warning' : 'bg-foreground/70',
-                  )}
-                  style={{ width: `${fillPct}%` }}
-                />
+                  className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                  role="meter"
+                  aria-label="Doluluk"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={fillPct}
+                >
+                  <div
+                    className={cn(
+                      'h-full rounded-full',
+                      availability.tone === 'full' ? 'bg-destructive' : availability.tone === 'low' ? 'bg-warning' : 'bg-foreground/70',
+                    )}
+                    style={{ width: `${fillPct}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 border-t pt-5 lg:mt-4 lg:pt-4">
+                {!canBook ? (
+                  <p className="text-sm text-muted-foreground">
+                    {event.status === 'cancelled'
+                      ? 'Bu etkinlik iptal edildi.'
+                      : 'Bu etkinlik daha önce gerçekleşti.'}
+                    {isConfirmed && ` Rezervasyonunuz: ${reservation!.tickets_requested} kişi.`}
+                  </p>
+                ) : isConfirmed ? (
+                  <div className="space-y-3">
+                    <SeatStepper
+                      id="seats-update"
+                      label="Kişi sayısını güncelle"
+                      value={selectedSeats}
+                      max={maxSeatsForUpdate}
+                      disabled={booking}
+                      onChange={setSelectedSeats}
+                      onInputChange={handleInputChange}
+                      onBlur={handleInputBlur}
+                    />
+                    <button
+                      onClick={handleUpdate}
+                      disabled={selectedSeats === reservation!.tickets_requested || selectedSeats > maxSeatsForUpdate || selectedSeats < 1 || booking}
+                      className={primaryBtn}
+                    >
+                      {booking ? 'Güncelleniyor…' : 'Rezervasyonu güncelle'}
+                    </button>
+                    <button
+                      onClick={() => setShowCancelModal(true)}
+                      disabled={cancelling || booking}
+                      className="h-11 w-full rounded-lg border border-destructive/30 px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Rezervasyonu iptal et
+                    </button>
+                  </div>
+                ) : !profile ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Rezervasyon yapmak için giriş yapmanız gerekiyor.
+                    </p>
+                    <Link to="/login" state={{ from: location }} className={cn(primaryBtn, 'flex items-center justify-center')}>
+                      Giriş yap
+                    </Link>
+                  </div>
+                ) : !isApproved ? (
+                  <p className="text-sm text-muted-foreground">
+                    Hesabınız yönetici onayı bekliyor. Onaylandığında rezervasyon yapabilirsiniz.
+                  </p>
+                ) : isSoldOut ? (
+                  <p className="text-sm text-muted-foreground">
+                    Yer açılırsa buradan rezervasyon yapabilirsiniz.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <SeatStepper
+                      id="seats-book"
+                      label="Kişi sayısı"
+                      value={selectedSeats}
+                      max={maxSeats}
+                      disabled={booking}
+                      onChange={setSelectedSeats}
+                      onInputChange={handleInputChange}
+                      onBlur={handleInputBlur}
+                    />
+                    <button
+                      onClick={handleBook}
+                      disabled={selectedSeats > maxSeats || selectedSeats < 1 || booking}
+                      className={primaryBtn}
+                    >
+                      {booking ? 'Rezerve ediliyor…' : `${selectedSeats} kişilik rezervasyon yap`}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
+          </aside>
 
-            <div className="mt-5 border-t pt-5">
-              {!canBook ? (
-                <p className="text-sm text-muted-foreground">
-                  {event.status === 'cancelled'
-                    ? 'Bu etkinlik iptal edildi.'
-                    : 'Bu etkinlik daha önce gerçekleşti.'}
-                  {isConfirmed && ` Rezervasyonunuz: ${reservation!.tickets_requested} kişi.`}
-                </p>
-              ) : isConfirmed ? (
-                <div className="space-y-3">
-                  <SeatStepper
-                    id="seats-update"
-                    label="Kişi sayısını güncelle"
-                    value={selectedSeats}
-                    max={maxSeatsForUpdate}
-                    disabled={booking}
-                    onChange={setSelectedSeats}
-                    onInputChange={handleInputChange}
-                    onBlur={handleInputBlur}
-                  />
-                  <button
-                    onClick={handleUpdate}
-                    disabled={selectedSeats === reservation!.tickets_requested || selectedSeats > maxSeatsForUpdate || selectedSeats < 1 || booking}
-                    className={primaryBtn}
-                  >
-                    {booking ? 'Güncelleniyor…' : 'Rezervasyonu güncelle'}
-                  </button>
-                  <button
-                    onClick={() => setShowCancelModal(true)}
-                    disabled={cancelling || booking}
-                    className="h-11 w-full rounded-lg border border-destructive/30 px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Rezervasyonu iptal et
-                  </button>
-                </div>
-              ) : !profile ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Rezervasyon yapmak için giriş yapmanız gerekiyor.
-                  </p>
-                  <Link to="/login" state={{ from: location }} className={cn(primaryBtn, 'flex items-center justify-center')}>
-                    Giriş yap
-                  </Link>
-                </div>
-              ) : !isApproved ? (
-                <p className="text-sm text-muted-foreground">
-                  Hesabınız yönetici onayı bekliyor. Onaylandığında rezervasyon yapabilirsiniz.
-                </p>
-              ) : isSoldOut ? (
-                <p className="text-sm text-muted-foreground">
-                  Yer açılırsa buradan rezervasyon yapabilirsiniz.
+          {/* Description, closing note, attendees — continue the right column on desktop */}
+          <div className="mt-8 space-y-8">
+            <section>
+              <h2 className="mb-2 text-base font-semibold text-foreground">Etkinlik hakkında</h2>
+              {event.description ? (
+                <p className="max-w-prose whitespace-pre-line break-words text-[0.9375rem] leading-relaxed text-foreground/90">
+                  {event.description}
                 </p>
               ) : (
-                <div className="space-y-3">
-                  <SeatStepper
-                    id="seats-book"
-                    label="Kişi sayısı"
-                    value={selectedSeats}
-                    max={maxSeats}
-                    disabled={booking}
-                    onChange={setSelectedSeats}
-                    onInputChange={handleInputChange}
-                    onBlur={handleInputBlur}
-                  />
-                  <button
-                    onClick={handleBook}
-                    disabled={selectedSeats > maxSeats || selectedSeats < 1 || booking}
-                    className={primaryBtn}
-                  >
-                    {booking ? 'Rezerve ediliyor…' : `${selectedSeats} kişilik rezervasyon yap`}
-                  </button>
-                </div>
+                <p className="text-sm text-muted-foreground">Açıklama girilmemiş.</p>
               )}
-            </div>
-          </div>
-        </aside>
-
-        {/* Description, closing note, attendees */}
-        <div className="mt-8 space-y-8 lg:col-start-1 lg:row-start-2">
-          <section>
-            <h2 className="mb-2 text-base font-semibold text-foreground">Etkinlik hakkında</h2>
-            {event.description ? (
-              <p className="max-w-prose whitespace-pre-line break-words text-[0.9375rem] leading-relaxed text-foreground/90">
-                {event.description}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Açıklama girilmemiş.</p>
-            )}
-          </section>
-
-          {event.status === 'completed' && event.closing_comment && (
-            <section className="rounded-xl border bg-card p-4">
-              <h2 className="mb-2 flex items-center gap-1.5 text-base font-semibold text-foreground">
-                <MessageSquareQuote className="h-4 w-4 text-muted-foreground" aria-hidden />
-                Kapanış notu
-              </h2>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
-                {event.closing_comment}
-              </p>
             </section>
-          )}
 
-          <section>
-            <h2 className="mb-3 text-base font-semibold text-foreground">Kimler geliyor?</h2>
-
-            {!profile ? (
-              <p className="text-sm text-muted-foreground">
-                Katılımcıları görmek için{' '}
-                <Link
-                  to="/login"
-                  state={{ from: location }}
-                  className="font-medium text-foreground underline underline-offset-4"
-                >
-                  giriş yapın
-                </Link>
-                .
-              </p>
-            ) : profile.is_private ? (
-              <div className="flex items-start gap-3 rounded-lg border border-dashed p-4">
-                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Gizli hesap modundayken diğer katılımcıları göremezsiniz.
-                  </p>
-                  <Link to="/profile" className="inline-block text-sm font-medium text-foreground underline underline-offset-4">
-                    Profil ayarlarına git
-                  </Link>
-                </div>
-              </div>
-            ) : attendeesLoading ? (
-              <div className="flex -space-x-3" aria-busy="true">
-                {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="h-10 w-10 animate-pulse rounded-full bg-muted ring-2 ring-background" />
-                ))}
-              </div>
-            ) : attendees.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Henüz herkese açık katılımcı bulunmuyor.
-              </p>
-            ) : (
-              <AttendeeStack attendees={attendees} onOpen={() => setShowAttendeesModal(true)} />
+            {event.status === 'completed' && event.closing_comment && (
+              <section className="rounded-xl border bg-card p-4">
+                <h2 className="mb-2 flex items-center gap-1.5 text-base font-semibold text-foreground">
+                  <MessageSquareQuote className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  Kapanış notu
+                </h2>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
+                  {event.closing_comment}
+                </p>
+              </section>
             )}
-          </section>
+
+            <section>
+              <h2 className="mb-3 text-base font-semibold text-foreground">Kimler geliyor?</h2>
+
+              {!profile ? (
+                <p className="text-sm text-muted-foreground">
+                  Katılımcıları görmek için{' '}
+                  <Link
+                    to="/login"
+                    state={{ from: location }}
+                    className="font-medium text-foreground underline underline-offset-4"
+                  >
+                    giriş yapın
+                  </Link>
+                  .
+                </p>
+              ) : attendeesLoading ? (
+                <div className="flex -space-x-3" aria-busy="true">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div key={i} className="h-10 w-10 animate-pulse rounded-full bg-muted ring-2 ring-background" />
+                  ))}
+                </div>
+              ) : attendees.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Henüz herkese açık katılımcı bulunmuyor.
+                </p>
+              ) : (
+                <AttendeeStack attendees={attendees} onOpen={() => setShowAttendeesModal(true)} />
+              )}
+            </section>
+          </div>
         </div>
       </div>
 

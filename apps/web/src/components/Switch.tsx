@@ -6,11 +6,12 @@ interface SwitchProps {
   disabled?: boolean;
   label?: string;
   id?: string;
+  className?: string;
 }
 
-export default function Switch({ checked, onChange, disabled, label, id }: SwitchProps) {
+export default function Switch({ checked, onChange, disabled, label, id, className }: SwitchProps) {
   return (
-    <label htmlFor={id} className="flex cursor-pointer items-center gap-3">
+    <label htmlFor={id} className={cn('flex cursor-pointer items-center gap-3', className)}>
       <button
         id={id}
         type="button"

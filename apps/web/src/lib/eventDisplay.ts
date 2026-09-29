@@ -47,13 +47,14 @@ export const availabilityToneClass: Record<AvailabilityTone, string> = {
 
 /**
  * Category colours come from the DB and are often fully saturated (#ff00ff…).
- * They're only ever shown as a small dot, mixed toward grey so the hue stays
- * recognisable without shouting.
+ * Nudged 20% toward the text colour in oklab: keeps the hue (oklch mixing with
+ * the bluish grey rotated red→magenta) and lifts pale colours off white / dark
+ * colours off the dark background.
  */
 export function categoryDotStyle(color: string | null | undefined): CSSProperties {
   return {
     backgroundColor: color
-      ? `color-mix(in oklch, ${color} 55%, var(--muted-foreground))`
+      ? `color-mix(in oklab, ${color} 80%, var(--foreground))`
       : 'var(--muted-foreground)',
   };
 }

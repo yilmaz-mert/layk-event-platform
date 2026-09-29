@@ -11,8 +11,9 @@ interface LocationState {
   from?: { pathname: string; search: string };
 }
 
+// 16px text: iOS Safari zooms into any focused input below 16px and keeps that zoom after login.
 const inputClass =
-  'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground ' +
+  'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-base text-foreground ' +
   'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ' +
   'focus:ring-offset-1 transition';
 
@@ -107,7 +108,9 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    // svh = viewport with browser toolbars shown, so the form centres in the space the user actually
+    // sees on iOS; min-height (not height) lets it grow and scroll when the keyboard is open.
+    <div className="flex min-h-svh items-center justify-center bg-background pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))]">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">L&apos;Ayk</h1>

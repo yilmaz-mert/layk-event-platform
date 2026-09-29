@@ -1,27 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, ChevronRight, Download, MapPin, Tag, Users, X } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ChevronRight, Download, Pencil, Users, X } from 'lucide-react';
 import { supabase, formatDateTime, formatPrice } from '@layk/core';
 import { useToast } from '@/components/Toast';
 import { cn } from '@layk/core';
+import type { EventCategory } from '@/components/CategoryManagerModal';
+import EventFormModal, { adminInputClass, type AdminEventRecord } from '@/components/admin/EventFormModal';
+import { CategoryLabel, EventStateBadges } from '@/components/admin/eventUi';
+import { formatEventDay, formatEventTime } from '@/lib/eventDisplay';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface EventDetail {
-  id: string;
-  title: string;
-  description: string | null;
-  image_url: string | null;
-  event_date: string;
-  capacity: number;
-  category: string | null;
-  price: number;
-  location: string | null;
+interface EventDetail extends AdminEventRecord {
   closing_comment: string | null;
-  is_published: boolean;
-  status: 'active' | 'cancelled' | 'completed';
-  event_categories: { name: string; color_code: string } | null;
 }
+
+const eventSelect =
+  'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, category_id, price, location, closing_comment, is_published, is_archived, status, created_at, event_categories(name, color_code)';
 
 interface AttendeeUser {
   id: string;
@@ -44,11 +39,6 @@ interface AuditLog {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const inputClass =
-  'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground ' +
-  'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ' +
-  'focus:ring-offset-1 transition';
 
 function formatLogAction(log: AuditLog): string {
   const abs = Math.abs(log.tickets_changed);
@@ -102,17 +92,12 @@ function exportToCSV(attendees: Attendee[], eventTitle: string) {
 
 function HeaderSkeleton() {
   return (
-    <div className="animate-pulse space-y-4">
-      <div className="h-48 w-full rounded-2xl bg-muted" />
-      <div className="h-7 w-64 rounded bg-muted" />
-      <div className="flex gap-3">
-        <div className="h-5 w-36 rounded bg-muted" />
-        <div className="h-5 w-24 rounded bg-muted" />
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-20 rounded-xl border bg-card" />
-        ))}
+    <div className="animate-pulse space-y-4" aria-busy="true">
+      <div className="h-7 w-64 max-w-full rounded bg-muted" />
+      <div className="h-4 w-40 rounded bg-muted" />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="h-24 rounded-xl border bg-card" />
+        <div className="h-24 rounded-xl border bg-card" />
       </div>
     </div>
   );
@@ -139,26 +124,11 @@ function AttendeeCardSkeleton() {
   );
 }
 
-// ── Stat block ───────────────────────────────────────────────────────────────
-
-function StatBlock({
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  accent?: boolean;
-}) {
+function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 text-2xl font-bold', accent ? 'text-primary' : 'text-foreground')}>
-        {value}
-      </p>
-      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+    <div className="flex items-baseline justify-between gap-4 py-2 sm:block sm:py-0">
+      <dt className="shrink-0 text-xs text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right text-sm text-foreground sm:mt-0.5 sm:text-left">{children}</dd>
     </div>
   );
 }
@@ -175,7 +145,15 @@ function AttendeeHistoryDrawer({
   const [visible, setVisible] = useState(false);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
+  const headingId = useId();
+  const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => previous?.focus();
+  }, []);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -252,8 +230,11 @@ function AttendeeHistoryDrawer({
 
       {/* Sliding panel */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
         className={cn(
-          'relative z-10 flex h-full w-full max-w-sm flex-col overflow-hidden border-l bg-card shadow-2xl',
+          'relative z-10 flex h-full w-full max-w-sm flex-col overflow-hidden border-l bg-card shadow-lg',
           'transition-transform duration-300 ease-out',
           visible ? 'translate-x-0' : 'translate-x-full',
         )}
@@ -261,7 +242,7 @@ function AttendeeHistoryDrawer({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">
+            <p id={headingId} className="truncate text-sm font-semibold text-foreground">
               {attendee.users?.full_name ?? 'Bilinmeyen Kullanıcı'}
             </p>
             <p className="truncate text-xs text-muted-foreground">
@@ -269,8 +250,9 @@ function AttendeeHistoryDrawer({
             </p>
           </div>
           <button
+            ref={closeRef}
             onClick={handleClose}
-            className="shrink-0 rounded-lg p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
             aria-label="Kapat"
           >
             <X className="h-4 w-4" />
@@ -297,9 +279,7 @@ function AttendeeHistoryDrawer({
 
           {/* Activity timeline */}
           <div className="px-5 py-4">
-            <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Etkinlik Geçmişi
-            </p>
+            <p className="mb-4 text-sm font-semibold text-foreground">Rezervasyon geçmişi</p>
 
             {loadingLogs ? (
               <div className="space-y-4">
@@ -376,25 +356,30 @@ export default function AdminEventDetails() {
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
+  // Total confirmed reservation rows server-side; the fetched list can be capped (PostgREST max rows).
+  const [reservationCount, setReservationCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedAttendee, setSelectedAttendee] = useState<Attendee | null>(null);
   const [closingComment, setClosingComment] = useState('');
   const [savingComment, setSavingComment] = useState(false);
+  const [categories, setCategories] = useState<EventCategory[]>([]);
+  const [editing, setEditing] = useState(false);
+  const closingId = useId();
 
-  const fetchData = useCallback(async (eventId: string) => {
-    setLoading(true);
+  // silent: refresh in place (after a save) so the page — and the edit button
+  // focus returns to — stays mounted.
+  const fetchData = useCallback(async (eventId: string, silent = false) => {
+    if (!silent) setLoading(true);
 
     const [eventRes, attendeesRes] = await Promise.all([
       supabase
         .from('events')
-        .select(
-          'id, title, description, image_url, event_date, capacity, category, price, location, closing_comment, is_published, status, event_categories(name, color_code)',
-        )
+        .select(eventSelect)
         .eq('id', eventId)
         .single(),
       supabase
         .from('reservations')
-        .select('id, created_at, tickets_requested, users(id, full_name, email)')
+        .select('id, created_at, tickets_requested, users(id, full_name, email)', { count: 'exact' })
         .eq('event_id', eventId)
         .eq('status', 'confirmed')
         .order('created_at', { ascending: true }),
@@ -409,12 +394,21 @@ export default function AdminEventDetails() {
     setEvent(eventRes.data as unknown as EventDetail);
     setClosingComment(eventRes.data.closing_comment ?? '');
     setAttendees((attendeesRes.data ?? []) as unknown as Attendee[]);
+    setReservationCount(attendeesRes.error ? null : attendeesRes.count);
     setLoading(false);
   }, [toast, navigate]);
 
   useEffect(() => {
     if (id) fetchData(id);
   }, [id, fetchData]);
+
+  async function openEdit() {
+    if (categories.length === 0) {
+      const { data } = await supabase.from('event_categories').select('id, name, color_code').order('name');
+      setCategories(data ?? []);
+    }
+    setEditing(true);
+  }
 
   async function handleSaveClosingComment() {
     if (!event) return;
@@ -434,239 +428,277 @@ export default function AdminEventDetails() {
     setSavingComment(false);
   }
 
-  const totalBooked = attendees.reduce((sum, a) => sum + (a.tickets_requested || 1), 0);
-  const available = event ? Math.max(event.capacity - totalBooked, 0) : 0;
+  // Occupancy comes from events.booked_count — the ticket total the 0014/0015
+  // trigger keeps in sync and book_event checks capacity against. The attendee
+  // list below is a separate, possibly capped query and is never used as the total.
+  const booked = event?.booked_count ?? 0;
+  const available = event ? Math.max(event.capacity - booked, 0) : 0;
   const fillPct =
     event && event.capacity > 0
-      ? Math.min(Math.round((totalBooked / event.capacity) * 100), 100)
+      ? Math.min(Math.round((booked / event.capacity) * 100), 100)
       : 0;
-  const categoryLabel = event?.event_categories?.name ?? event?.category ?? null;
-  const categoryColor = event?.event_categories?.color_code;
-  const statusLabel = event
-    ? event.status === 'active' ? 'Aktif' : event.status === 'completed' ? 'Tamamlandı' : 'İptal Edildi'
-    : '';
+  const listedTickets = attendees.reduce((sum, a) => sum + a.tickets_requested, 0);
+  const listIsPartial = reservationCount !== null && reservationCount > attendees.length;
+  const listUnknown = reservationCount === null;
+  const listDiffers = !listIsPartial && !listUnknown && listedTickets !== booked;
+  const closingDirty = (closingComment.trim() || null) !== (event?.closing_comment ?? null);
 
   return (
     <>
-      <main className="mx-auto max-w-5xl px-4 pb-16 pt-6">
-        {/* Back navigation */}
-        <button
-          onClick={() => navigate('/admin/events')}
-          className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
+      <main className="mx-auto max-w-5xl px-4 pb-16 pt-4 sm:pt-6">
+        <Link
+          to="/admin/events"
+          className="-ml-2 mb-4 inline-flex h-11 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Etkinliklere Dön
-        </button>
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Etkinlikler
+        </Link>
 
         {loading ? (
           <HeaderSkeleton />
         ) : event ? (
           <>
-            {/* Event header */}
-            {event.image_url && (
-              <div className="mb-5 overflow-hidden rounded-2xl">
-                <img
-                  src={event.image_url}
-                  alt={event.title}
-                  className="h-48 w-full object-cover sm:h-64"
-                />
-              </div>
-            )}
-
-            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-              <h1 className="text-2xl font-bold text-foreground">{event.title}</h1>
-              <div className="flex items-center gap-2">
-                {!event.is_published && (
-                  <span className="rounded-full bg-yellow-500/10 px-2.5 py-0.5 text-xs font-semibold text-yellow-600 dark:text-yellow-400">
-                    Taslak
-                  </span>
-                )}
-                <span
-                  className={cn(
-                    'rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                    event.status === 'active'
-                      ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                      : event.status === 'completed'
-                        ? 'bg-muted text-muted-foreground'
-                        : 'bg-destructive/10 text-destructive',
-                  )}
-                >
-                  {statusLabel}
-                </span>
-              </div>
-            </div>
-
-            <div className="mb-6 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <CalendarDays className="h-4 w-4" />
-                {formatDateTime(event.event_date, 'short')}
-              </span>
-              {event.location && (
-                <span className="flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4" />
-                  {event.location}
-                </span>
-              )}
-              {categoryLabel && (
-                <span
-                  className="flex items-center gap-1.5 rounded-full px-2 py-0.5"
-                  style={categoryColor ? { backgroundColor: `${categoryColor}1A`, color: categoryColor } : undefined}
-                >
-                  <Tag className="h-4 w-4" />
-                  {categoryLabel}
-                </span>
-              )}
-              <span className="font-semibold text-primary">{formatPrice(event.price)}</span>
-            </div>
-
-            {/* Capacity stats */}
-            <div className="mb-8 space-y-3">
-              <div className="grid grid-cols-3 gap-3 sm:gap-4">
-                <StatBlock label="Kontenjan" value={event.capacity} />
-                <StatBlock label="Rezerve Edilen" value={totalBooked} accent />
-                <StatBlock label="Boş Kontenjan" value={available} sub={`%${fillPct} dolu`} />
-              </div>
-
-              <div className="overflow-hidden rounded-full bg-muted" style={{ height: '6px' }}>
-                <div
-                  className={cn(
-                    'h-full rounded-full transition-all duration-500',
-                    fillPct >= 100 ? 'bg-destructive' : 'bg-primary',
-                  )}
-                  style={{ width: `${fillPct}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Attendees section */}
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-base font-semibold text-foreground">
-                  Katılımcılar
-                  {attendees.length > 0 && (
-                    <span className="ml-1.5 text-sm font-normal text-muted-foreground">
-                      ({attendees.length})
-                    </span>
-                  )}
-                </h2>
-              </div>
-
-              {attendees.length > 0 && (
-                <button
-                  onClick={() => exportToCSV(attendees, event.title)}
-                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-muted"
-                >
-                  <Download className="h-4 w-4" />
-                  CSV İndir
-                </button>
-              )}
-            </div>
-
-            {attendees.length > 0 ? (
-              <>
-                {/* Desktop table (md+) */}
-                <div className="hidden overflow-x-auto rounded-xl border md:block">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b bg-muted/40">
-                        {['Ad Soyad', 'E-posta', 'Rezervasyon Tarihi', ''].map((h, i) => (
-                          <th
-                            key={i}
-                            className="p-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {attendees.map((a) => (
-                        <tr
-                          key={a.id}
-                          className="cursor-pointer border-b last:border-0 transition-colors hover:bg-muted/40"
-                          onClick={() => setSelectedAttendee(a)}
-                        >
-                          <td className="p-4">
-                            <p className="text-sm font-medium text-foreground">
-                              {a.users?.full_name ?? '—'}
-                            </p>
-                          </td>
-                          <td className="p-4">
-                            <p className="text-sm text-muted-foreground">
-                              {a.users?.email ?? '—'}
-                            </p>
-                          </td>
-                          <td className="p-4">
-                            <p className="text-sm text-muted-foreground">
-                              {formatDateTime(a.created_at)}
-                            </p>
-                          </td>
-                          <td className="p-4 text-muted-foreground/40">
-                            <ChevronRight className="h-4 w-4" />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile cards (< md) */}
-                <div className="space-y-3 md:hidden">
-                  {attendees.map((a) => (
-                    <div
-                      key={a.id}
-                      className="flex cursor-pointer items-start justify-between rounded-xl border bg-card p-4 transition hover:bg-muted/40 hover:shadow-sm"
-                      onClick={() => setSelectedAttendee(a)}
-                    >
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {a.users?.full_name ?? '—'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{a.users?.email ?? '—'}</p>
-                        <p className="text-xs text-muted-foreground/70">
-                          Rezervasyon: {formatDateTime(a.created_at)}
-                        </p>
-                      </div>
-                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/40" />
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="rounded-xl border border-dashed p-10 text-center">
-                <Users className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
-                <p className="text-sm font-medium text-foreground">Henüz katılımcı yok</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Onaylanan rezervasyonlar burada görünecek.
+            {/* Event summary */}
+            <section aria-labelledby="event-title" className="mb-8">
+              {(event.status === 'cancelled' || event.is_archived) && (
+                <p className={cn(
+                  'mb-4 rounded-lg px-3 py-2 text-sm',
+                  event.status === 'cancelled' ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground',
+                )}>
+                  {event.status === 'cancelled'
+                    ? 'Bu etkinlik iptal edildi. Kullanıcılar yeni rezervasyon yapamaz.'
+                    : 'Bu etkinlik arşivde. Etkinlik listesinde Arşiv sekmesinde görünür.'}
                 </p>
+              )}
+
+              <div className="flex flex-col gap-5 md:flex-row md:items-start">
+                {/* Whole image at its own ratio (4:5 posters too) — capped height instead of a crop. */}
+                {event.image_url && (
+                  <div className="md:order-2 md:w-72 md:shrink-0">
+                    <img
+                      src={event.image_url}
+                      alt=""
+                      className="block h-auto w-full rounded-xl md:mx-auto md:max-h-96 md:w-auto md:max-w-full"
+                    />
+                  </div>
+                )}
+
+                <div className="min-w-0 flex-1">
+                  <EventStateBadges status={event.status} published={event.is_published} archived={event.is_archived} />
+                  <h1 id="event-title" className="mt-2 break-words text-pretty text-2xl font-semibold tracking-tight text-foreground">
+                    {event.title}
+                  </h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    <time dateTime={event.event_date}>
+                      {formatEventDay(event.event_date)}, {formatEventTime(event.event_date)}
+                    </time>
+                  </p>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={openEdit}
+                      className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-primary px-4 sm:h-10 sm:pointer-coarse:h-11 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden />
+                      Etkinliği düzenle
+                    </button>
+                    {attendees.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => exportToCSV(attendees, event.title)}
+                        className="inline-flex h-11 items-center gap-1.5 rounded-lg border px-4 sm:h-10 sm:pointer-coarse:h-11 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                      >
+                        <Download className="h-4 w-4" aria-hidden />
+                        Katılımcıları indir (CSV)
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
+
+              <dl className="mt-6 grid divide-y rounded-xl border px-4 sm:grid-cols-2 sm:gap-4 sm:divide-y-0 sm:py-4 lg:grid-cols-4">
+                <MetaRow label="Konum">{event.location ?? '—'}</MetaRow>
+                <MetaRow label="Kategori">
+                  <CategoryLabel
+                    name={event.event_categories?.name ?? event.category}
+                    color={event.event_categories?.color_code}
+                    className="text-sm text-foreground"
+                  />
+                </MetaRow>
+                <MetaRow label="Fiyat">{formatPrice(event.price)}</MetaRow>
+                <MetaRow label="Kişi başı bilet">{event.max_tickets_per_user}</MetaRow>
+              </dl>
+              {event.description && (
+                <p className="mt-4 max-w-prose whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+                  {event.description}
+                </p>
+              )}
+            </section>
+
+            {/* Occupancy */}
+            <section aria-labelledby="occupancy-title" className="mb-8">
+              <h2 id="occupancy-title" className="mb-3 text-base font-semibold text-foreground">Doluluk</h2>
+              <div className="rounded-xl border p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="tabular-nums text-foreground">
+                    <span className="text-2xl font-semibold">{booked}</span>
+                    <span className="text-muted-foreground"> / {event.capacity} bilet</span>
+                  </p>
+                  <p className={cn('text-sm tabular-nums', available === 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                    {available === 0 ? 'Kontenjan doldu' : `${available} boş yer, %${fillPct} dolu`}
+                  </p>
+                </div>
+                <div
+                  className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+                  role="meter"
+                  aria-label="Doluluk"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={fillPct}
+                >
+                  <div
+                    className={cn('h-full rounded-full', fillPct >= 100 ? 'bg-destructive' : 'bg-foreground/70')}
+                    style={{ width: `${fillPct}%` }}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Attendees */}
+            <section aria-labelledby="attendees-title">
+              <h2 id="attendees-title" className="mb-3 flex items-center gap-2 text-base font-semibold text-foreground">
+                <Users className="h-4 w-4 text-muted-foreground" aria-hidden />
+                Katılımcılar
+              </h2>
+              {attendees.length > 0 && (
+                <p className="-mt-1 mb-3 text-sm tabular-nums text-muted-foreground">
+                  {listIsPartial
+                    ? `${reservationCount} onaylı rezervasyonun ilk ${attendees.length} tanesi listeleniyor (${listedTickets} bilet). CSV de yalnızca listelenenleri içerir.`
+                    : `${attendees.length} onaylı rezervasyon, toplam ${listedTickets} bilet`}
+                </p>
+              )}
+              {(listDiffers || listUnknown) && (
+                <p className="mb-3 rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
+                  {listUnknown
+                    ? 'Rezervasyon sayısı doğrulanamadı; liste eksik olabilir.'
+                    : `Listelenen biletler (${listedTickets}) doluluk sayacıyla (${booked}) eşleşmiyor. Doluluk sayacı esas alınır; fark, rezervasyonsuz girilmiş örnek veriden kaynaklanabilir.`}
+                </p>
+              )}
+
+              {attendees.length > 0 ? (
+                <>
+                  {/* Desktop table (md+) */}
+                  <div className="hidden overflow-x-auto rounded-xl border md:block">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
+                          <th scope="col" className="px-4 py-2.5 font-medium">Ad soyad</th>
+                          <th scope="col" className="px-4 py-2.5 font-medium">E-posta</th>
+                          <th scope="col" className="px-4 py-2.5 text-right font-medium">Bilet</th>
+                          <th scope="col" className="px-4 py-2.5 font-medium">Rezervasyon</th>
+                          <th scope="col" className="w-10 px-4 py-2.5"><span className="sr-only">Geçmiş</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {attendees.map((a) => (
+                          <tr
+                            key={a.id}
+                            className="cursor-pointer border-b transition-colors last:border-0 hover:bg-muted/40"
+                            onClick={() => setSelectedAttendee(a)}
+                          >
+                            <td className="px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setSelectedAttendee(a); }}
+                                className="text-left text-sm font-medium text-foreground hover:underline"
+                              >
+                                {a.users?.full_name ?? '—'}
+                              </button>
+                            </td>
+                            <td className="max-w-[16rem] truncate px-4 py-3 text-sm text-muted-foreground" title={a.users?.email}>
+                              {a.users?.email ?? '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm tabular-nums text-foreground">{a.tickets_requested}</td>
+                            <td className="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-muted-foreground">
+                              {formatDateTime(a.created_at)}
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">
+                              <ChevronRight className="h-4 w-4" aria-hidden />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile list (< md) */}
+                  <ul className="divide-y rounded-xl border md:hidden">
+                    {attendees.map((a) => (
+                      <li key={a.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAttendee(a)}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block break-words text-sm font-medium text-foreground">
+                              {a.users?.full_name ?? '—'}
+                            </span>
+                            <span className="block break-all text-xs text-muted-foreground">{a.users?.email ?? '—'}</span>
+                            <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
+                              {formatDateTime(a.created_at)}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-sm tabular-nums text-foreground">{a.tickets_requested} bilet</span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed px-4 py-10 text-center">
+                  <p className="text-sm font-medium text-foreground">Henüz katılımcı yok</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Onaylanan rezervasyonlar burada görünecek.
+                  </p>
+                </div>
+              )}
+            </section>
 
             {/* Closing comment editor — only relevant once the event is completed */}
             {event.status === 'completed' && (
-              <section className="mt-10 rounded-xl border bg-card p-5">
-                <h2 className="mb-3 text-base font-semibold text-foreground">Kapanış Notu</h2>
+              <section className="mt-8 rounded-xl border p-4 sm:p-5">
+                <label htmlFor={closingId} className="block text-base font-semibold text-foreground">Kapanış notu</label>
+                <p className="mt-1 text-xs text-muted-foreground">Etkinlik sayfasında katılımcılara gösterilir.</p>
                 <textarea
+                  id={closingId}
                   rows={4}
                   value={closingComment}
                   onChange={(e) => setClosingComment(e.target.value)}
                   placeholder="Katılımcılara gösterilecek kapanış notunu yazın…"
-                  className={cn(inputClass, 'resize-none')}
+                  className={cn(adminInputClass, 'mt-3 resize-y')}
                 />
-                <button
-                  onClick={handleSaveClosingComment}
-                  disabled={savingComment}
-                  className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {savingComment ? 'Kaydediliyor…' : 'Kaydet'}
-                </button>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSaveClosingComment}
+                    disabled={savingComment || !closingDirty}
+                    className="h-11 rounded-lg bg-primary px-4 text-sm font-semibold sm:h-10 sm:pointer-coarse:h-11 text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingComment ? 'Kaydediliyor…' : 'Notu kaydet'}
+                  </button>
+                  <span className="text-xs text-muted-foreground" aria-live="polite">
+                    {closingDirty ? 'Kaydedilmemiş değişiklik var' : event.closing_comment ? 'Kaydedildi' : ''}
+                  </span>
+                </div>
               </section>
             )}
           </>
         ) : null}
 
-        {/* Attendee table skeleton while loading */}
+        {/* Attendee list skeleton while loading */}
         {loading && (
           <div className="mt-8 space-y-3">
             <div className="hidden overflow-x-auto rounded-xl border md:block">
@@ -692,6 +724,15 @@ export default function AdminEventDetails() {
         <AttendeeHistoryDrawer
           attendee={selectedAttendee}
           onClose={() => setSelectedAttendee(null)}
+        />
+      )}
+
+      {editing && event && (
+        <EventFormModal
+          editEvent={event}
+          categories={categories}
+          onClose={() => setEditing(false)}
+          onSaved={() => fetchData(event.id, true)}
         />
       )}
     </>
