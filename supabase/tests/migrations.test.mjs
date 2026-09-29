@@ -47,13 +47,14 @@ async function makeEvent(overrides = {}) {
     is_published: true,
     is_archived: false,
     category: null,
+    location: null,
     ...overrides,
   };
   const { rows } = await asUser(conn, await getAdmin(), (c) =>
     c.query(
-      `INSERT INTO public.events (title, event_date, capacity, max_tickets_per_user, status, is_published, is_archived, category)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [e.title, e.event_date, e.capacity, e.max_tickets_per_user, e.status, e.is_published, e.is_archived, e.category],
+      `INSERT INTO public.events (title, event_date, capacity, max_tickets_per_user, status, is_published, is_archived, category, location)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [e.title, e.event_date, e.capacity, e.max_tickets_per_user, e.status, e.is_published, e.is_archived, e.category, e.location],
     ),
   );
   return rows[0].id;
@@ -434,6 +435,245 @@ test('a failed event insert leaves no notifications behind', async () => {
   await assert.rejects(makeEvent({ capacity: 0 }), /check constraint/);
   const afterCount = Number((await db.admin.query('SELECT count(*) FROM public.notifications')).rows[0].count);
   assert.equal(afterCount, before);
+});
+
+// ── BUG-002: event cancellation keeps reservations (0033) ────────────────────
+
+const reservationOf = async (userId, eventId) =>
+  (await db.admin.query('SELECT status, tickets_requested FROM public.reservations WHERE user_id = $1 AND event_id = $2', [userId, eventId])).rows[0];
+
+const noticesOf = async (userId, eventId, type) =>
+  (await db.admin.query(
+    `SELECT title, message, link_url FROM public.notifications WHERE user_id = $1 AND type = $2 AND link_url = '/events/' || $3`,
+    [userId, type, eventId],
+  )).rows;
+
+// Books `holders` (seats each) and returns them; the last one then cancels their own booking.
+async function eventWithHolders(overrides = {}, seats = [2, 3]) {
+  const ev = await makeEvent({ capacity: 20, ...overrides });
+  const users = [];
+  for (const n of seats) {
+    const u = await makeUser('approved');
+    await book(u, u, ev, n);
+    users.push(u);
+  }
+  return { ev, users };
+}
+
+const asAnon = async (fn) => {
+  await conn.query('BEGIN');
+  try {
+    await conn.query('SET LOCAL ROLE anon');
+    return await fn(conn);
+  } finally {
+    await conn.query('ROLLBACK');
+  }
+};
+
+const canSeeEvent = async (userId, eventId) =>
+  (await asUser(conn, userId, (c) => c.query('SELECT id FROM public.events WHERE id = $1', [eventId]))).rowCount === 1;
+
+test('cancelling an event keeps every reservation and booked_count', async () => {
+  const { ev, users: [a, b] } = await eventWithHolders();
+  await updateReservation(b, b, ev, { status: 'cancelled' });
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  assert.deepEqual(await reservationOf(a, ev), { status: 'confirmed', tickets_requested: 2 });
+  assert.deepEqual(await reservationOf(b, ev), { status: 'cancelled', tickets_requested: 3 });
+  assert.equal((await state(ev)).booked, 2);
+});
+
+test('holder can cancel their own reservation on a cancelled event; seats are released', async () => {
+  const { ev, users: [a, b] } = await eventWithHolders();
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  assert.equal((await state(ev)).booked, 5);
+  await updateReservation(a, a, ev, { status: 'cancelled' });
+  const s = await state(ev);
+  assert.equal(s.booked, 3);
+  assert.equal(s.confirmed, 3);
+  assert.equal((await reservationOf(b, ev)).status, 'confirmed');
+});
+
+test('on a cancelled event new booking, re-booking and ticket changes are refused', async () => {
+  const { ev, users: [a, b] } = await eventWithHolders();
+  await updateReservation(b, b, ev, { status: 'cancelled' });
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  const newcomer = await makeUser('approved');
+  await assert.rejects(book(newcomer, newcomer, ev, 1), /not open for booking/i);
+  await assert.rejects(book(b, b, ev, 1), /not open for booking/i);
+  await assert.rejects(updateReservation(a, a, ev, { tickets_requested: 1 }), /not open for booking/i);
+  await assert.rejects(updateReservation(b, b, ev, { status: 'confirmed' }), /book_event/);
+  assert.equal((await state(ev)).booked, 2);
+});
+
+test('reactivation keeps continuing reservations; user cancellations are not revived', async () => {
+  const { ev, users: [a, b] } = await eventWithHolders();
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  await updateReservation(b, b, ev, { status: 'cancelled' });
+  await adminUpdateEvent(ev, { status: 'active' });
+  assert.equal((await reservationOf(a, ev)).status, 'confirmed');
+  assert.equal((await reservationOf(b, ev)).status, 'cancelled');
+  assert.equal((await state(ev)).booked, 2);
+  await book(b, b, ev, 1); // normal re-booking works again once the event is open
+  assert.equal((await state(ev)).booked, 3);
+});
+
+test('cancel notice: says the event (not the reservation) was cancelled; only confirmed holders get it', async () => {
+  const { ev, users: [a, b] } = await eventWithHolders();
+  await updateReservation(b, b, ev, { status: 'cancelled' });
+  const bystander = await makeUser('approved');
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  const [n, ...rest] = await noticesOf(a, ev, 'cancelled_event');
+  assert.equal(rest.length, 0);
+  assert.match(n.message, /organizatör tarafından iptal edildi/);
+  assert.match(n.message, /Rezervasyon kaydınız korunuyor/);
+  assert.doesNotMatch(n.message, /voided|rezervasyonunuz iptal/i);
+  assert.equal((await noticesOf(b, ev, 'cancelled_event')).length, 0);
+  assert.equal((await noticesOf(bystander, ev, 'cancelled_event')).length, 0);
+});
+
+test('reopen notice: only continuing holders, with current date and location; missing location is not invented', async () => {
+  const when = new Date(Date.now() + 10 * DAY);
+  when.setUTCHours(17, 30, 0, 0); // 20:30 in Europe/Istanbul
+  const { ev, users: [a, b] } = await eventWithHolders({ location: 'Kadıköy Sahnesi', event_date: when.toISOString() });
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  await updateReservation(b, b, ev, { status: 'cancelled' });
+  await adminUpdateEvent(ev, { status: 'active' });
+  const [n, ...rest] = await noticesOf(a, ev, 'event_reopened');
+  assert.equal(rest.length, 0);
+  const day = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric' })
+    .format(when).replaceAll('/', '.');
+  assert.ok(n.message.includes(`${day} 20:30`), n.message);
+  assert.ok(n.message.includes('Kadıköy Sahnesi'), n.message);
+  assert.equal((await noticesOf(b, ev, 'event_reopened')).length, 0);
+
+  const { ev: ev2, users: [c] } = await eventWithHolders({ location: null }, [1]);
+  await adminUpdateEvent(ev2, { status: 'cancelled' });
+  await adminUpdateEvent(ev2, { status: 'active' });
+  const [n2] = await noticesOf(c, ev2, 'event_reopened');
+  assert.doesNotMatch(n2.message, /Mekan|null/);
+});
+
+test('saving the same status again or editing fields does not repeat cancel/reopen notices', async () => {
+  const { ev, users: [a] } = await eventWithHolders({}, [1]);
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  await adminUpdateEvent(ev, { status: 'cancelled', cancellation_note: 'Sanatçı rahatsızlandı.' });
+  await adminUpdateEvent(ev, { title: 'Yeni başlık' });
+  assert.equal((await noticesOf(a, ev, 'cancelled_event')).length, 1);
+  await adminUpdateEvent(ev, { status: 'active' });
+  await adminUpdateEvent(ev, { status: 'active', capacity: 30 });
+  assert.equal((await noticesOf(a, ev, 'event_reopened')).length, 1);
+});
+
+test('cancel → reopen → cancel again produces a notice for each real transition', async () => {
+  const { ev, users: [a] } = await eventWithHolders({}, [1]);
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  await adminUpdateEvent(ev, { status: 'active' });
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  assert.equal((await noticesOf(a, ev, 'cancelled_event')).length, 2);
+  assert.equal((await noticesOf(a, ev, 'event_reopened')).length, 1);
+});
+
+for (const [name, hidden, reveal] of [
+  ['unpublished', { is_published: false }, { is_published: true }],
+  ['archived', { is_archived: true }, { is_archived: false }],
+  ['past', { event_date: past() }, { event_date: future() }],
+]) {
+  test(`reactivating a cancelled event while ${name} sends no reopen notice until it is bookable`, async () => {
+    const { ev, users: [a] } = await eventWithHolders({}, [1]);
+    await adminUpdateEvent(ev, { status: 'cancelled' });
+    await adminUpdateEvent(ev, { status: 'active', ...hidden });
+    assert.equal((await noticesOf(a, ev, 'event_reopened')).length, 0);
+    await adminUpdateEvent(ev, reveal);
+    assert.equal((await noticesOf(a, ev, 'event_reopened')).length, 1);
+    await adminUpdateEvent(ev, hidden);
+    await adminUpdateEvent(ev, reveal);
+    assert.equal((await noticesOf(a, ev, 'event_reopened')).length, 1);
+  });
+}
+
+test('cancelling while unpublished, archived or past sends no cancel notice and no later reopen notice', async () => {
+  for (const hidden of [{ is_published: false }, { is_archived: true }, { event_date: past() }]) {
+    const holder = await makeUser('approved');
+    const ev = await makeEvent(hidden);
+    await book(await getAdmin(), holder, ev, 1); // admin can book closed events
+    await adminUpdateEvent(ev, { status: 'cancelled' });
+    assert.equal((await noticesOf(holder, ev, 'cancelled_event')).length, 0, JSON.stringify(hidden));
+    await adminUpdateEvent(ev, { status: 'active', is_published: true, is_archived: false, event_date: future() });
+    assert.equal((await noticesOf(holder, ev, 'event_reopened')).length, 0, JSON.stringify(hidden));
+  }
+});
+
+test('reopen notice does not duplicate the first-publish announcement for the same user', async () => {
+  const approvedHolder = await makeUser('approved');
+  const pendingHolder = await makeUser('pending');
+  const ev = await makeEvent({ status: 'completed' }); // published + future but never announced (not active)
+  assert.equal(await newEventNotifications(ev), 0);
+  await book(await getAdmin(), approvedHolder, ev, 1);
+  await book(await getAdmin(), pendingHolder, ev, 1);
+  await adminUpdateEvent(ev, { status: 'cancelled' });
+  await adminUpdateEvent(ev, { status: 'active' }); // first time bookable: announcement + reopen in one statement
+  assert.equal((await noticesOf(approvedHolder, ev, 'new_event')).length, 1);
+  assert.equal((await noticesOf(approvedHolder, ev, 'event_reopened')).length, 0);
+  assert.equal((await noticesOf(pendingHolder, ev, 'new_event')).length, 0);
+  assert.equal((await noticesOf(pendingHolder, ev, 'event_reopened')).length, 1);
+});
+
+test('cancelled event detail: visible to holders (also after they cancel), hidden from others and guests', async () => {
+  const { ev, users: [a, b] } = await eventWithHolders();
+  const bystander = await makeUser('approved');
+  await adminUpdateEvent(ev, { status: 'cancelled', cancellation_note: 'Mekan su baskını nedeniyle kapalı.' });
+  await updateReservation(b, b, ev, { status: 'cancelled' });
+
+  const { rows: [detail] } = await asUser(conn, a, (c) =>
+    c.query('SELECT status, cancellation_note FROM public.events WHERE id = $1', [ev]),
+  );
+  assert.deepEqual(detail, { status: 'cancelled', cancellation_note: 'Mekan su baskını nedeniyle kapalı.' });
+  assert.ok(await canSeeEvent(b, ev));
+  assert.ok(!(await canSeeEvent(bystander, ev)));
+  assert.equal((await asAnon((c) => c.query('SELECT id FROM public.events WHERE id = $1', [ev]))).rowCount, 0);
+
+  // Notification link → the same event row the holder can open.
+  const [n] = await noticesOf(a, ev, 'cancelled_event');
+  assert.ok(await canSeeEvent(a, n.link_url.split('/').pop()));
+
+  // Rezervasyonlarım join (reservations → events) resolves the event without RLS recursion.
+  const { rows } = await asUser(conn, a, (c) =>
+    c.query(`SELECT r.status, e.status AS event_status FROM public.reservations r
+               JOIN public.events e ON e.id = r.event_id WHERE r.event_id = $1`, [ev]),
+  );
+  assert.deepEqual(rows, [{ status: 'confirmed', event_status: 'cancelled' }]);
+
+  // Keşfet query shape (status in active/completed) still leaves it out.
+  const feed = await asUser(conn, a, (c) =>
+    c.query(`SELECT id FROM public.events WHERE id = $1 AND status IN ('active', 'completed')`, [ev]),
+  );
+  assert.equal(feed.rowCount, 0);
+});
+
+test('reservation-based access does not widen draft or archived visibility', async () => {
+  const holder = await makeUser('approved');
+  const draft = await makeEvent({ is_published: false });
+  const archivedCancelled = await makeEvent();
+  await book(await getAdmin(), holder, draft, 1);
+  await book(holder, holder, archivedCancelled, 1);
+  await adminUpdateEvent(archivedCancelled, { status: 'cancelled' });
+  await adminUpdateEvent(archivedCancelled, { is_archived: true });
+  const draftCancelled = await makeEvent({ is_published: false });
+  await book(await getAdmin(), holder, draftCancelled, 1);
+  await adminUpdateEvent(draftCancelled, { status: 'cancelled' });
+  for (const ev of [draft, archivedCancelled, draftCancelled]) assert.ok(!(await canSeeEvent(holder, ev)), ev);
+});
+
+test('admin keeps full visibility and can reactivate without touching reservations', async () => {
+  const { ev, users: [a] } = await eventWithHolders({}, [2]);
+  await adminUpdateEvent(ev, { status: 'cancelled', is_archived: true });
+  assert.ok(await canSeeEvent(await getAdmin(), ev));
+  const { rows: [summary] } = await asUser(conn, await getAdmin(), (c) =>
+    c.query(`SELECT count(*)::int AS n, coalesce(sum(tickets_requested), 0)::int AS tickets
+               FROM public.reservations WHERE event_id = $1 AND status = 'confirmed'`, [ev]),
+  );
+  assert.deepEqual(summary, { n: 1, tickets: 2 });
+  assert.equal((await reservationOf(a, ev)).status, 'confirmed');
 });
 
 // ── In-app notifications only (0032) ─────────────────────────────────────────

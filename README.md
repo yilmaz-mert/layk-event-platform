@@ -41,7 +41,7 @@ npm run dev          # yalnızca web (turbo dev --filter=web) → http://localho
 | `npm run build` / `npm run build:web` | `tsc -b && vite build` → `apps/web/dist` |
 | `npm run lint` | ESLint (web) |
 | `npx tsc --noEmit -p packages/core` | Core tip kontrolü |
-| `npm run test:db` | Migration testleri: `supabase/tests/` — geçici, yerel gerçek PostgreSQL sunucusunda tüm migration'lar sırayla uygulanır (rezervasyon yetkisi, kapasite yarışı, uygulama içi bildirimler, dış gönderim olmaması) |
+| `npm run test:db` | Migration testleri: `supabase/tests/` — geçici, yerel gerçek PostgreSQL sunucusunda tüm migration'lar sırayla uygulanır (rezervasyon yetkisi, kapasite yarışı, etkinlik iptali/yeniden açılması, uygulama içi bildirimler, dış gönderim olmaması) |
 | `node scripts/refresh-demo-data.test.js`, `node scripts/upload-event-images.test.js` | Betiklerin saf-fonksiyon testleri |
 
 Web ve core için ayrı bir test koşucusu (Jest/Vitest) yoktur. `test:db` ilk çalıştırmada `embedded-postgres`
@@ -69,8 +69,27 @@ Uygulamada artık sabit kodlanmış yedek proje yoktur.
 Yalnızca **uygulama içi bildirimler** desteklenir: kayıtlar `public.notifications` tablosuna veritabanı trigger'ları
 (yeni etkinlik, etkinlik iptali, kapasite uyarısı, destek yanıtı) ve admin ekranları (duyuru, kullanıcı detayı) tarafından
 yazılır; web'deki bildirim zili bunları Supabase Realtime ile günceller. Kullanıcı yalnızca kendi bildirimlerini görür,
-okundu işaretler ve siler (RLS). SMS, WhatsApp ve mobil/web push gönderimi **yoktur** — `0032` dış gönderim trigger'larını
-kaldırdı; Edge Function yoktur. `users.push_token` kolonu eski veriyi korumak için duruyor, kullanılmıyor.
+okundu işaretler ve siler (RLS). Etkinlik iptali ve yeniden açılması yalnızca gerçek durum geçişinde bildirim üretir
+(ayrıntı: aşağıdaki “Etkinlik iptali”). SMS, WhatsApp ve mobil/web push gönderimi **yoktur** — `0032` dış gönderim trigger'larını
+kaldırdı; repoda Edge Function yoktur. `users.push_token` kolonu eski veriyi korumak için duruyor, kullanılmıyor.
+
+## Etkinlik iptali
+
+> `0033_event_cancellation_keeps_reservations.sql` ile gelir; **canlıya henüz uygulanmadı** (bkz. migration bölümü).
+
+- Yönetici etkinliği iptal edince rezervasyonlar, bilet sayıları ve doluluk korunur; etkinlik Keşfet'ten kalkar, yeni
+  rezervasyon ve kişi sayısı değişikliği kapanır. Kullanıcı yalnızca kendi rezervasyonunu iptal edebilir (yer serbest kalır).
+- Rezervasyonlarım'da kayıt “İptal edilen etkinlikler” altında “Etkinlik iptal edildi” olarak görünür. Detay sayfası iptal
+  durumunu ve varsa organizatörün iptal açıklamasını (`events.cancellation_note`) gösterir; kullanıcının kendi iptali ayrı
+  yazılır. İptal edilmiş etkinliği yalnızca o etkinlikte rezervasyon kaydı olan kullanıcılar görür (kendi iptal ettiği kayıt
+  dahil); misafirler ve diğer kullanıcılar göremez, taslak/arşiv görünürlüğü değişmez.
+- Bildirimler: iptal bildirimi etkinlik yayında, arşiv dışında ve gelecek tarihliyken iptal edilirse onaylı rezervasyon
+  sahiplerine gider. Yeniden açılma bildirimi, bu iptalden sonra etkinlik ilk kez yeniden rezerve edilebilir olduğunda
+  (aktif, yayında, arşiv dışında, gelecek tarih) yalnızca rezervasyonu devam edenlere, güncel tarih ve (varsa) mekanla
+  gider. Aynı durumun tekrar kaydedilmesi veya düzenleme bildirimi çoğaltmaz; ilk yayın bildirimini alan kullanıcıya
+  ayrıca yeniden açılma bildirimi gitmez. Kullanıcının kendi iptal ettiği rezervasyon otomatik geri gelmez.
+- Yönetici panelinde iptal ve yeniden etkinleştirme onay ister; yeniden etkinleştirme onayı korunan onaylı rezervasyon
+  ve toplam bilet sayısını gösterir.
 
 ## Deploy (Vercel)
 
@@ -78,23 +97,33 @@ Kök `vercel.json`: build `npm run build:web`, çıktı `apps/web/dist`, tüm yo
 (SPA yenilemede 404 olmaması için; kaldırmayın). `apps/web/vercel.json` aynı rewrite'ı, proje kökü `apps/web`
 seçilmişse kullanılmak üzere içerir.
 
-**Vercel'de zorunlu:** Production ve Preview ortamlarında `VITE_SUPABASE_URL` ve `VITE_SUPABASE_ANON_KEY`.
-Önceki sürüm bu değişkenleri production build'de fiilen okumuyordu (sabit demo projeye bağlanıyordu); bu yüzden Vercel'de
-tanımlı oldukları varsayılmamalıdır — ilk deploy'dan önce proje ayarlarından kontrol edin, yoksa build bilerek başarısız olur.
-Service-role anahtarı Vercel'e eklenmez.
+**Vercel'de zorunlu:** Production ve Preview ortamlarında `VITE_SUPABASE_URL` ve `VITE_SUPABASE_ANON_KEY` (ikisi de
+public değerdir). Eksikse build bilerek başarısız olur. Service-role anahtarı Vercel'e eklenmez.
 
 ## Veritabanı migration'ları
 
 - Dosyalar `supabase/migrations/NNNN_aciklama.sql` sırasıyla uygulanır ve şemanın tek kaynağıdır.
 - Uygulanmış bir migration değiştirilmez; her değişiklik yeni numaralı bir dosyadır.
 - RLS politikaları genellikle `DROP POLICY IF EXISTS` + `CREATE POLICY` ile bütünüyle yeniden tanımlanır.
-- Uygulama: gözden geçirdikten sonra Supabase CLI (`supabase link`, `supabase db push`) veya panelin SQL Editor'ü.
-  Hangi migration'ların uzak veritabanında uygulandığı bu repodan doğrulanamaz; deploy öncesi panelden kontrol edin.
+- **Mevcut canlı proje:** 0001–0032 uygulanmıştır (son olarak 0030–0032, 2026-09-29, SQL Editor). **0033 henüz
+  uygulanmadı:** önce SQL Editor'da 0033, ardından web deploy (yeni web sürümü 0033'ün kolonlarını okur). Migration'lar SQL
+  Editor ile uygulandığından Supabase CLI'nin migration geçmişi bunları bilmez: bu projede `supabase db push`
+  **çalıştırmayın** (eski dosyaları yeniden çalıştırmayı dener). Yeni bir değişiklik yalnızca yeni numaralı dosya olarak
+  SQL Editor'da çalıştırılır; CLI'ye geçilecekse önce uygulanmış sürümler `supabase migration repair --status applied`
+  ile işaretlenmelidir.
+- **Yeni/boş proje:** dosyalar sırayla uygulanır (SQL Editor veya `supabase link` + `supabase db push`).
 - `supabase/checks/verify_0031_0032.sql`: SQL Editor'da çalıştırılacak salt okunur doğrulama (0031 + 0032); `HATA` satırı
   olmamalı. `npm run test:db` aynı sorguyu yerel veritabanında da çalıştırır.
 
 ## Bilinen açık konular
 
-SEC-001 (rezervasyon yetkisi), BUG-001 (kapanmış etkinliğe rezervasyon) ve BUG-003 (taslak etkinlik bildirimi)
-`0031_booking_guards_and_publish_notification.sql` ile düzeltildi; migration uzak veritabanına uygulanana kadar canlıda
-açık sayılmalıdır. İptal akışı (BUG-002) açıktır. Ayrıntı: `docs/project-audit/findings.md` (yerel, git'te yok sayılır).
+SEC-001 (rezervasyon yetkisi), BUG-001 (kapanmış etkinliğe rezervasyon) ve BUG-003 (taslak etkinlik bildirimi) `0031` ile
+çözüldü; SMS/push `0032` ile kaldırıldı — ikisi de canlıda uygulandı. Kalan maddeler:
+
+- **BUG-002 (kodda çözüldü, canlıda açık):** ürün kararı `0033` ve web değişiklikleriyle uygulandı (bkz. “Etkinlik
+  iptali”); 0033 canlıya uygulanıp web yayınlanana kadar canlıda eski davranış sürer.
+- **Bundle boyutu (ARCH-002, kısmen):** ana chunk ~556 kB; build 500 kB uyarısı verir, işlevsel engel değildir.
+- **Uzak temizlik (yapılmadıysa):** kullanılmayan `send-push` / `send-booking-sms` Edge Function'ları, `TWILIO_*`
+  secret'ları ve `app.supabase_service_role_key` / `app.supabase_project_ref` veritabanı ayarları.
+
+Ayrıntı: [docs/project-audit/findings.md](docs/project-audit/findings.md).

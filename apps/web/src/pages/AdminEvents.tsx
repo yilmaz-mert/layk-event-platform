@@ -5,7 +5,7 @@ import { supabase, cn } from '@layk/core';
 import { useToast } from '@/hooks/useToast';
 import CategoryManagerModal, { type EventCategory } from '@/components/CategoryManagerModal';
 import EventFormModal, { type AdminEventRecord } from '@/components/admin/EventFormModal';
-import ConfirmDialog from '@/components/admin/ConfirmDialog';
+import EventStatusConfirm from '@/components/admin/EventStatusConfirm';
 import { CategoryLabel, EventStateBadges, OccupancyMeter } from '@/components/admin/eventUi';
 import { statusLabels, type EventStatus } from '@/components/admin/eventStatus';
 import { formatEventDay, formatEventTime } from '@/lib/eventDisplay';
@@ -415,7 +415,7 @@ function ChoiceChips<T extends string>({
 // ── Main page ────────────────────────────────────────────────────────────────
 
 const eventSelect =
-  'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, category_id, price, location, is_published, is_archived, status, created_at, event_categories(name, color_code)';
+  'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, category_id, price, location, is_published, is_archived, status, cancellation_note, reopen_notice_pending, created_at, event_categories(name, color_code)';
 
 export default function AdminEvents() {
   const { toast } = useToast();
@@ -430,7 +430,7 @@ export default function AdminEvents() {
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
-  const [pendingCancel, setPendingCancel] = useState<EventRecord | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<{ event: EventRecord; kind: 'cancel' | 'reactivate' } | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -477,32 +477,40 @@ export default function AdminEvents() {
     }
   }
 
-  async function applyStatus(id: string, newStatus: EventStatus) {
+  async function applyStatus(id: string, newStatus: EventStatus, cancellationNote?: string | null) {
     setUpdatingStatusId(id);
-    const { error } = await supabase
+    const changes = cancellationNote === undefined
+      ? { status: newStatus }
+      : { status: newStatus, cancellation_note: cancellationNote };
+    // Re-read the row: triggers (0033) move reopen_notice_pending on status changes.
+    const { data, error } = await supabase
       .from('events')
-      .update({ status: newStatus })
-      .eq('id', id);
+      .update(changes)
+      .eq('id', id)
+      .select(eventSelect)
+      .single();
 
     if (error) {
       toast.error(error.message);
     } else {
       toast.success(`Etkinlik "${statusLabels[newStatus]}" olarak işaretlendi.`);
-      setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status: newStatus } : e)));
+      setEvents((prev) => prev.map((e) => (e.id === id ? ((data as unknown as EventRecord | null) ?? { ...e, ...changes }) : e)));
     }
     setUpdatingStatusId(null);
   }
 
-  // Cancelling notifies every confirmed attendee (0012 trigger), so it asks first.
+  // Cancelling and reactivating both notify holders (0033), so they ask first.
   function handleStatusChange(event: EventRecord, newStatus: EventStatus) {
-    if (newStatus === 'cancelled') setPendingCancel(event);
+    if (newStatus === 'cancelled') setPendingStatus({ event, kind: 'cancel' });
+    else if (event.status === 'cancelled' && newStatus === 'active') setPendingStatus({ event, kind: 'reactivate' });
     else applyStatus(event.id, newStatus);
   }
 
-  async function confirmCancel() {
-    if (!pendingCancel) return;
-    await applyStatus(pendingCancel.id, 'cancelled');
-    setPendingCancel(null);
+  async function confirmStatus(cancellationNote: string | null) {
+    if (!pendingStatus) return;
+    const { event, kind } = pendingStatus;
+    await (kind === 'cancel' ? applyStatus(event.id, 'cancelled', cancellationNote) : applyStatus(event.id, 'active'));
+    setPendingStatus(null);
   }
 
   async function handleArchiveEvent(id: string, archived: boolean) {
@@ -865,19 +873,14 @@ export default function AdminEvents() {
         />
       )}
 
-      {pendingCancel && (
-        <ConfirmDialog
-          title="Etkinlik iptal edilsin mi?"
-          confirmLabel="Etkinliği iptal et"
-          busy={updatingStatusId === pendingCancel.id}
-          onConfirm={confirmCancel}
-          onCancel={() => setPendingCancel(null)}
-        >
-          <p>
-            <span className="font-medium text-foreground">{pendingCancel.title}</span> iptal edildi olarak
-            işaretlenecek ve onaylı rezervasyonu olan herkese bildirim gönderilecek.
-          </p>
-        </ConfirmDialog>
+      {pendingStatus && (
+        <EventStatusConfirm
+          kind={pendingStatus.kind}
+          event={pendingStatus.event}
+          busy={updatingStatusId === pendingStatus.event.id}
+          onConfirm={confirmStatus}
+          onCancel={() => setPendingStatus(null)}
+        />
       )}
 
       {showCategoryModal && (

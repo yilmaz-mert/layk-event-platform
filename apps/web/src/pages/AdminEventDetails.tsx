@@ -15,8 +15,12 @@ interface EventDetail extends AdminEventRecord {
   closing_comment: string | null;
 }
 
+// The note editor edits the cancellation note while cancelled, otherwise the closing note.
+const noteField = (e: EventDetail) => (e.status === 'cancelled' ? 'cancellation_note' : 'closing_comment');
+const noteOf = (e: EventDetail) => e[noteField(e)];
+
 const eventSelect =
-  'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, category_id, price, location, closing_comment, is_published, is_archived, status, created_at, event_categories(name, color_code)';
+  'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, category_id, price, location, closing_comment, is_published, is_archived, status, cancellation_note, reopen_notice_pending, created_at, event_categories(name, color_code)';
 
 interface AttendeeUser {
   id: string;
@@ -390,7 +394,7 @@ export default function AdminEventDetails() {
         return;
       }
       setEvent(eventRes.data as unknown as EventDetail);
-      setClosingComment(eventRes.data.closing_comment ?? '');
+      setClosingComment(noteOf(eventRes.data as unknown as EventDetail) ?? '');
       setAttendees((attendeesRes.data ?? []) as unknown as Attendee[]);
       setReservationCount(attendeesRes.error ? null : attendeesRes.count);
       setLoading(false);
@@ -425,16 +429,17 @@ export default function AdminEventDetails() {
     if (!event) return;
     setSavingComment(true);
     const trimmed = closingComment.trim() || null;
+    const field = noteField(event);
     const { error } = await supabase
       .from('events')
-      .update({ closing_comment: trimmed })
+      .update({ [field]: trimmed })
       .eq('id', event.id);
 
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Kapanış notu kaydedildi.');
-      setEvent((prev) => (prev ? { ...prev, closing_comment: trimmed } : prev));
+      toast.success(field === 'cancellation_note' ? 'İptal açıklaması kaydedildi.' : 'Kapanış notu kaydedildi.');
+      setEvent((prev) => (prev ? { ...prev, [field]: trimmed } : prev));
     }
     setSavingComment(false);
   }
@@ -452,7 +457,7 @@ export default function AdminEventDetails() {
   const listIsPartial = reservationCount !== null && reservationCount > attendees.length;
   const listUnknown = reservationCount === null;
   const listDiffers = !listIsPartial && !listUnknown && listedTickets !== booked;
-  const closingDirty = (closingComment.trim() || null) !== (event?.closing_comment ?? null);
+  const closingDirty = (closingComment.trim() || null) !== ((event && noteOf(event)) ?? null);
 
   return (
     <>
@@ -678,17 +683,23 @@ export default function AdminEventDetails() {
               )}
             </section>
 
-            {/* Closing comment editor — only relevant once the event is completed */}
-            {event.status === 'completed' && (
+            {/* Organiser note: closing note once completed, cancellation note while cancelled */}
+            {(event.status === 'completed' || event.status === 'cancelled') && (
               <section className="mt-8 rounded-xl border p-4 sm:p-5">
-                <label htmlFor={closingId} className="block text-base font-semibold text-foreground">Kapanış notu</label>
-                <p className="mt-1 text-xs text-muted-foreground">Etkinlik sayfasında katılımcılara gösterilir.</p>
+                <label htmlFor={closingId} className="block text-base font-semibold text-foreground">
+                  {event.status === 'cancelled' ? 'İptal açıklaması' : 'Kapanış notu'}
+                </label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {event.status === 'cancelled'
+                    ? 'Rezervasyonu olan kullanıcılara etkinlik sayfasında gösterilir.'
+                    : 'Etkinlik sayfasında katılımcılara gösterilir.'}
+                </p>
                 <textarea
                   id={closingId}
                   rows={4}
                   value={closingComment}
                   onChange={(e) => setClosingComment(e.target.value)}
-                  placeholder="Katılımcılara gösterilecek kapanış notunu yazın…"
+                  placeholder={event.status === 'cancelled' ? 'İptalin nedenini kısaca yazın…' : 'Katılımcılara gösterilecek kapanış notunu yazın…'}
                   className={cn(adminInputClass, 'mt-3 resize-y')}
                 />
                 <div className="mt-3 flex items-center gap-3">

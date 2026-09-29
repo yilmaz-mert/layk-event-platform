@@ -8,10 +8,10 @@ Bu dokümanda yer alan tüm bulgular, kod yolları, veritabanı migration'ları 
 
 | ID | Başlık | Önem | Durum | Kategori |
 | :--- | :--- | :--- | :--- | :--- |
-| **SEC-001** | `book_event` RPC'sinde `approval_status` (Hesap Onayı) Kontrolünün Bulunmaması | **Kritik** | Açık — güncel SQL'de yeniden doğrulandı (+ ek UPDATE yolu) | Güvenlik / Yetki |
-| **BUG-001** | İptal, Arşivlenmiş, Tamamlanmış ve Taslak Etkinliklerin `book_event` ile Rezerve Edilebilmesi | **Yüksek** | Açık — güncel SQL'de yeniden doğrulandı (+ ek UPDATE yolu) | İş Mantığı |
-| **BUG-002** | İptal Edilen Etkinliklerin Kullanıcı Sayfasından Gizlenmesi ve Bildirim Linkinin 404 Vermesi | **Yüksek** | Açık — ürün kararı gerekli | RLS / Veri Akışı |
-| **BUG-003** | Yeni Etkinlik Bildiriminin Taslak Oluşturulurken Gitmesi ve Yayında Tetiklenmemesi | **Orta** | Açık — güncel SQL'de yeniden doğrulandı | Trigger Mantığı |
+| **SEC-001** | `book_event` RPC'sinde `approval_status` (Hesap Onayı) Kontrolünün Bulunmaması | **Kritik** | **Çözüldü** — `0031`, canlıda uygulandı | Güvenlik / Yetki |
+| **BUG-001** | İptal, Arşivlenmiş, Tamamlanmış ve Taslak Etkinliklerin `book_event` ile Rezerve Edilebilmesi | **Yüksek** | **Çözüldü** — `0031`, canlıda uygulandı | İş Mantığı |
+| **BUG-002** | İptal Edilen Etkinliklerin Kullanıcı Sayfasından Gizlenmesi ve Bildirim Linkinin 404 Vermesi | **Yüksek** | **Kodda çözüldü** — `0033` + web; canlıya uygulanmadı | RLS / Veri Akışı |
+| **BUG-003** | Yeni Etkinlik Bildiriminin Taslak Oluşturulurken Gitmesi ve Yayında Tetiklenmemesi | **Orta** | **Çözüldü** — `0031`, canlıda uygulandı | Trigger Mantığı |
 | **SEC-002** | `@layk/core` İçinde Sabit Kodlanmış Fallback Supabase Anahtarları | **Orta** | **Çözüldü** (2026-09-29) | Yapılandırma Güvenliği |
 | **BUG-004** | `TicketChat` Bileşeninde Kullanıcının Kendi Gönderdiği Mesaja Bildirim Sesi Çalınması | **Düşük** | **Çözüldü** (2026-09-29) | UX / State |
 | **BUG-005** | React 19 ve `eslint-plugin-react-hooks` Kuralları Nedeniyle `npm run lint` Başarısızlığı | **Orta** | **Çözüldü** (lint 0 problem) | Kod Kalitesi / CI |
@@ -19,9 +19,46 @@ Bu dokümanda yer alan tüm bulgular, kod yolları, veritabanı migration'ları 
 | **ARCH-001** | Kullanılmayan ve Rotalanmamış Yetim Sayfalar (`Support.tsx`, `AdminEventManagement.tsx`) | **Orta** | **Çözüldü** (dosyalar silindi) | Mimari Temizlik |
 | **ARCH-002** | Kod Bölme (Code Splitting) Bulunmaması Nedeniyle 632 kB Dev Tekil Bundle | **Orta** | Kısmen çözüldü (admin lazy; ana chunk 556 kB) | Performans |
 | **DOC-001** | `CLAUDE.md` Dokümantasyonu ile `ProtectedRoute.tsx` Arasındaki Yetki Çelişkisi | **Düşük** | **Çözüldü** (doküman düzeltildi) | Dokümantasyon |
-| **INT-001** | SMS Gönderiminin Yalnızca Bir Taslak (Stub) Olması ve Veritabanı GUC Parametre Bağımlılığı | **Düşük** | Açık — değişmedi (bilgi) | Entegrasyon |
+| **INT-001** | SMS Gönderiminin Yalnızca Bir Taslak (Stub) Olması ve Veritabanı GUC Parametre Bağımlılığı | **Düşük** | **Geçersiz** — SMS/push kapsamdan çıkarıldı (`0032`) | Entegrasyon |
 
 ---
+
+## Canlı Durum — 2026-09-29 (en güncel)
+
+- `0030`, `0031`, `0032` canlı veritabanında **kullanıcı tarafından** Supabase SQL Editor'da uygulandı, hatasız tamamlandı;
+  uygulama canlıda çalışıyor ve kullanıcı kontrolleri tamamlandı. (Asistanın canlı veritabanına doğrudan erişimi olmadı;
+  salt okunur doğrulama sorgusu: `supabase/checks/verify_0031_0032.sql`.)
+- Aşağıdaki eski bölümlerde "açık" / "uzağa uygulanmadı" yazan SEC-001, BUG-001, BUG-003 notları o anki durumu anlatır;
+  üçü de çözüldü. INT-001 geçersiz (SMS/push kaldırıldı).
+- **BUG-002 — kodda çözüldü, canlıya uygulanmadı** (aşağıdaki 0033 bölümü). Önceki durum: `notify_on_event_cancel` (0012) "Your reservation has been
+  voided" yazar ama rezervasyonlar `confirmed` kalır; `events` kullanıcı politikası (0029) iptal edilen etkinliği gizler,
+  `MyBookings` etkinliği gelmeyen satırları eler, bildirim linki etkinliği açamaz. Ürün kararı gerekiyor.
+- Diğer açıklar: ARCH-002 kısmen (ana chunk ~556 kB), A11Y-001 ekran okuyucuyla doğrulanmadı.
+
+## Durum Güncellemesi — BUG-002 (0033, canlıya uygulanmadı)
+
+Kök neden: rezervasyonlar zaten korunuyordu; sorun (1) 0012 iptal bildiriminin "Your reservation has been voided"
+demesi ve bayat/geçmiş etkinlikte de tetiklenmesi, (2) 0029 `events` politikasının iptal edilen etkinliği rezervasyon
+sahibinden de gizlemesi (Rezervasyonlarım satırı düşüyor, bildirim linki açılmıyordu), (3) yeniden açılma bildiriminin
+hiç olmamasıydı.
+
+Düzeltme (`0033_event_cancellation_keeps_reservations.sql` + web):
+- `events.cancellation_note` (organizatör iptal açıklaması; `closing_comment` tamamlanma notu olarak kaldı) ve
+  `events.reopen_notice_pending` (kalıcı geçiş işareti; mevcut iptal edilmiş etkinlikler `true` ile başlatılır).
+- Ek SELECT politikası `events: holders view own cancelled` (yalnızca `authenticated`): iptal + yayında + arşiv dışı +
+  kullanıcının kendi rezervasyonu (her durumda). Kontrol SECURITY DEFINER `user_has_reservation()` ile — RLS rekürsiyonu yok.
+- `trg_track_event_cancellation_notice` (BEFORE UPDATE) geçişleri işaretler; `notify_on_event_cancel` (aynı trigger adı)
+  iptal ve yeniden açılma bildirimlerini yazar. İlk yayın bildirimiyle aynı ifadede onaylı kullanıcılara yeniden açılma
+  bildirimi gitmez.
+- Rezervasyon kuralları değişmedi: 0031 `assert_booking_allowed` iptal edilmiş etkinlikte yeni/yeniden rezervasyonu ve kişi
+  sayısı değişikliğini zaten kapatıyor; kullanıcı iptali (yer serbest bırakma) açık.
+- Web: detay sayfası iptal durumu + açıklama + yalnızca "Rezervasyonu iptal et"; kullanıcı iptali ayrı metin;
+  Rezervasyonlarım'da "İptal edilen etkinlikler" bölümü; admin iptal onayında isteğe bağlı açıklama, yeniden
+  etkinleştirme onayında korunan rezervasyon/bilet sayısı; admin detayında iptal açıklaması düzenleme.
+
+Doğrulama: `npm run test:db` 58/58 (PG 18, 17, 15). 0033 olmadan BUG-002'ye özgü 10 test kırmızıydı (rezervasyonları
+koruma ve işlemleri kapatma testleri baştan yeşildi — o kısım zaten doğruydu). Web: mock Supabase ile 390 ve 1280 px'de
+34 hedefli kontrol (gerçek backend değil). Yayın sırası: önce 0033 (SQL Editor), sonra web deploy.
 
 ## Durum Güncellemesi — 2026-09-29 (teslim öncesi temizlik turu)
 

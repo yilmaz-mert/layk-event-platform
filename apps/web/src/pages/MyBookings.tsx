@@ -160,14 +160,22 @@ export default function MyBookings() {
 
   const now = new Date();
 
-  const upcoming = reservations
-    .filter((r) => r.events && new Date(r.events.event_date) > now)
+  // Organiser-cancelled events keep their bookings (0033) but never count as upcoming or attended.
+  const cancelled = reservations
+    .filter((r) => r.events?.status === 'cancelled')
+    .sort((a, b) =>
+      new Date(a.events!.event_date).getTime() - new Date(b.events!.event_date).getTime(),
+    );
+  const live = reservations.filter((r) => r.events && r.events.status !== 'cancelled');
+
+  const upcoming = live
+    .filter((r) => new Date(r.events!.event_date) > now)
     .sort((a, b) =>
       new Date(a.events!.event_date).getTime() - new Date(b.events!.event_date).getTime(),
     );
 
-  const past = reservations
-    .filter((r) => r.events && new Date(r.events.event_date) <= now)
+  const past = live
+    .filter((r) => new Date(r.events!.event_date) <= now)
     .sort((a, b) =>
       new Date(b.events!.event_date).getTime() - new Date(a.events!.event_date).getTime(),
     );
@@ -219,8 +227,22 @@ export default function MyBookings() {
             </section>
           )}
 
-          {past.length > 0 && (
+          {cancelled.length > 0 && (
             <section className={cn(upcoming.length > 0 && 'mt-8')}>
+              <h2 className="mb-3 text-base font-semibold text-foreground">
+                İptal edilen etkinlikler
+                <span className="ml-2 text-sm font-normal tabular-nums text-muted-foreground">{cancelled.length}</span>
+              </h2>
+              <div className="space-y-3">
+                {cancelled.map((r) => (
+                  <BookingCard key={`${r.id}:${r.events?.image_url ?? ''}`} reservation={r} isPast />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {past.length > 0 && (
+            <section className={cn((upcoming.length > 0 || cancelled.length > 0) && 'mt-8')}>
               <h2 className="mb-3 text-base font-semibold text-foreground">
                 Geçmiş
                 <span className="ml-2 text-sm font-normal tabular-nums text-muted-foreground">{past.length}</span>

@@ -35,6 +35,7 @@ interface Event {
   price: number;
   location: string | null;
   closing_comment: string | null;
+  cancellation_note: string | null;
   status: 'active' | 'completed' | 'cancelled';
   event_categories: { name: string; color_code: string } | null;
 }
@@ -303,7 +304,7 @@ export default function EventDetails() {
       supabase
         .from('events')
         .select(
-          'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, price, location, closing_comment, status, event_categories(name, color_code)',
+          'id, title, description, image_url, event_date, capacity, booked_count, max_tickets_per_user, category, price, location, closing_comment, cancellation_note, status, event_categories(name, color_code)',
         )
         .eq('id', eventId)
         .single(),
@@ -313,7 +314,7 @@ export default function EventDetails() {
             .select('id, status, tickets_requested')
             .eq('event_id', eventId)
             .eq('user_id', userId)
-            .eq('status', 'confirmed')
+            // Any status: a cancelled row tells "you cancelled" apart from "the event was cancelled".
             .maybeSingle()
         : Promise.resolve({ data: null, error: null } as const),
     ]);
@@ -610,11 +611,31 @@ export default function EventDetails() {
               </div>
 
               <div className="mt-5 border-t pt-5 lg:mt-4 lg:pt-4">
-                {!canBook ? (
+                {event.status === 'cancelled' ? (
+                  // Event cancelled by the organiser: the booking is kept; only the user's own cancel stays open.
+                  isConfirmed ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Etkinlik organizatör tarafından iptal edildi. Rezervasyon kaydınız korunuyor
+                        ({reservation!.tickets_requested} kişi); etkinlik yeniden açılırsa size bildireceğiz.
+                      </p>
+                      <button
+                        onClick={() => setShowCancelModal(true)}
+                        disabled={cancelling}
+                        className="h-11 w-full rounded-lg border border-destructive/30 px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Rezervasyonu iptal et
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Bu etkinlik organizatör tarafından iptal edildi.
+                      {reservation?.status === 'cancelled' && ' Rezervasyonunuzu daha önce siz iptal ettiniz.'}
+                    </p>
+                  )
+                ) : !canBook ? (
                   <p className="text-sm text-muted-foreground">
-                    {event.status === 'cancelled'
-                      ? 'Bu etkinlik iptal edildi.'
-                      : 'Bu etkinlik daha önce gerçekleşti.'}
+                    Bu etkinlik daha önce gerçekleşti.
                     {isConfirmed && ` Rezervasyonunuz: ${reservation!.tickets_requested} kişi.`}
                   </p>
                 ) : isConfirmed ? (
@@ -698,6 +719,18 @@ export default function EventDetails() {
                 <p className="text-sm text-muted-foreground">Açıklama girilmemiş.</p>
               )}
             </section>
+
+            {event.status === 'cancelled' && event.cancellation_note && (
+              <section className="rounded-xl border border-destructive/30 bg-card p-4">
+                <h2 className="mb-2 flex items-center gap-1.5 text-base font-semibold text-foreground">
+                  <MessageSquareQuote className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  Organizatör açıklaması
+                </h2>
+                <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground">
+                  {event.cancellation_note}
+                </p>
+              </section>
+            )}
 
             {event.status === 'completed' && event.closing_comment && (
               <section className="rounded-xl border bg-card p-4">
@@ -793,6 +826,7 @@ export default function EventDetails() {
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Bu etkinlik için rezervasyonunuzu iptal etmek istediğinizden emin misiniz? Bu işlem yerinizi tekrar genel kontenjana açacak ve geri alınamaz.
+              {event?.status === 'cancelled' && ' Etkinlik yeniden açılırsa rezervasyonunuz kendiliğinden geri gelmez.'}
             </p>
 
             <div className="mt-5 flex items-center justify-end gap-3">

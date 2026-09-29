@@ -8,6 +8,7 @@ import { categoryDotStyle } from '@/lib/eventDisplay';
 import { statusLabels, type EventStatus } from './eventStatus';
 import AdminDialog from './AdminDialog';
 import ConfirmDialog from './ConfirmDialog';
+import EventStatusConfirm from './EventStatusConfirm';
 
 export interface AdminEventRecord {
   id: string;
@@ -25,6 +26,9 @@ export interface AdminEventRecord {
   is_published: boolean;
   is_archived: boolean;
   status: EventStatus;
+  cancellation_note: string | null;
+  /** Holders were told it is cancelled; a reopen notice is due (0033). */
+  reopen_notice_pending: boolean;
   created_at: string;
   event_categories: { name: string; color_code: string } | null;
 }
@@ -111,7 +115,7 @@ async function discardUnsavedUpload(fileName: string, publicUrl: string) {
 const STATUS_OPTIONS: { value: EventStatus; hint: string }[] = [
   { value: 'active', hint: 'Rezervasyona açık.' },
   { value: 'completed', hint: 'Etkinlik gerçekleşti; kapanış notu eklenebilir.' },
-  { value: 'cancelled', hint: 'Onaylı rezervasyonu olan herkese bildirim gönderilir.' },
+  { value: 'cancelled', hint: 'Rezervasyonlar korunur; onaylı rezervasyonu olanlara bildirim gider.' },
 ];
 
 const FIELD_ORDER: FieldKey[] = ['title', 'event_date', 'capacity', 'maxTickets', 'price'];
@@ -216,7 +220,7 @@ export default function EventFormModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmStatus, setConfirmStatus] = useState<'cancel' | 'reactivate' | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -282,15 +286,20 @@ export default function EventFormModal({
       document.getElementById(fid(firstInvalid))?.focus();
       return;
     }
-    // Cancelling notifies every confirmed attendee (0012 trigger), so it asks first — same as the list.
+    // Cancelling and reactivating notify holders (0033), so they ask first — same as the list.
     if (isEditing && form.status === 'cancelled' && editEvent.status !== 'cancelled') {
-      setConfirmCancel(true);
+      setConfirmStatus('cancel');
+      return;
+    }
+    if (isEditing && form.status === 'active' && editEvent.status === 'cancelled') {
+      setConfirmStatus('reactivate');
       return;
     }
     await save();
   }
 
-  async function save() {
+  /** `cancellationNote` is set only when this save cancels the event. */
+  async function save(cancellationNote?: string | null) {
     const cap = parseInt(form.capacity, 10);
     const maxTix = parseInt(form.maxTickets, 10);
     const price = parseFloat(form.price);
@@ -342,7 +351,14 @@ export default function EventFormModal({
       // scripts/backups/* restore earlier image_url values — references the
       // browser cannot see, so it can never prove a delete is safe.
       const { error } = isEditing
-        ? await supabase.from('events').update({ ...payload, status: form.status }).eq('id', editEvent.id)
+        ? await supabase
+            .from('events')
+            .update({
+              ...payload,
+              status: form.status,
+              ...(cancellationNote !== undefined && { cancellation_note: cancellationNote }),
+            })
+            .eq('id', editEvent.id)
         : await supabase.from('events').insert({ ...payload, status: 'active' });
       if (error) throw error;
 
@@ -630,18 +646,23 @@ export default function EventFormModal({
       </div>
     </AdminDialog>
 
-    {confirmCancel && (
-      <ConfirmDialog
-        title="Etkinlik iptal edilsin mi?"
-        confirmLabel="Etkinliği iptal et"
-        onConfirm={() => { setConfirmCancel(false); void save(); }}
-        onCancel={() => setConfirmCancel(false)}
-      >
-        <p>
-          <span className="font-medium text-foreground">{form.title.trim() || editEvent?.title}</span> iptal edildi olarak
-          işaretlenecek ve onaylı rezervasyonu olan herkese bildirim gönderilecek.
-        </p>
-      </ConfirmDialog>
+    {confirmStatus && editEvent && (
+      <EventStatusConfirm
+        kind={confirmStatus}
+        // Predict notices from the values being saved, not the stored ones.
+        event={{
+          ...editEvent,
+          title: form.title.trim() || editEvent.title,
+          is_published: form.is_published,
+          event_date: form.event_date ? new Date(form.event_date).toISOString() : editEvent.event_date,
+        }}
+        onConfirm={(note) => {
+          const kind = confirmStatus;
+          setConfirmStatus(null);
+          void (kind === 'cancel' ? save(note) : save());
+        }}
+        onCancel={() => setConfirmStatus(null)}
+      />
     )}
 
     {confirmDiscard && (
