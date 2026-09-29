@@ -1,4 +1,10 @@
-// Minimal ambient declaration so TypeScript is satisfied in browser-typed
-// environments (Vite, jsdom). Metro (Expo) inlines process.env.EXPO_PUBLIC_*
-// statically at build time regardless of whether this declaration exists.
-declare const process: { env: Record<string, string | undefined> } | undefined;
+// The Vite env vars @layk/core reads. Declared here because core doesn't depend on
+// `vite/client` types; in apps/web these merge with Vite's own ImportMetaEnv.
+interface ImportMetaEnv {
+  readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_SUPABASE_ANON_KEY?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

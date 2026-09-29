@@ -7,14 +7,15 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies, build output and tool caches
 node_modules
 dist
 dist-ssr
-*.local
+.turbo
+*.tsbuildinfo
 
-# Expo
-.expo
-expo-env.d.ts
+# Local env files (VITE_SUPABASE_*, service-role keys for scripts)
+*.local
 
 # Editor directories and files
 .vscode/*
@@ -26,9 +27,19 @@ expo-env.d.ts
 *.njsproj
 *.sln
 *.sw?
-scripts
 
-# Agents
+/docs/project-audit/
+
+# Environment files; keep safe templates
+.env
+.env.*
+!.env.example
+
+# Ignore everything in scripts except README.md
+scripts/*
+!/scripts/README.md
+
+# Agents (local assistant configuration)
 .agents
 .claude
 skills-lock.json

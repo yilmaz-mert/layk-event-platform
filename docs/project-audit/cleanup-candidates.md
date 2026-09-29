@@ -1,5 +1,13 @@
 # Temizlik ve Sadeleştirme Adayları (cleanup-candidates.md)
 
+> **Durum — 2026-09-29:** Silindi: `Support.tsx`, `AdminEventManagement.tsx`, `public/icons.svg` (kod/HTML/CSS referansı yok),
+> `src/assets/hero.png` (referans yok), kullanılmayan shadcn `components.json`, Vite şablon `apps/web/README.md`, kök `app.json`, `.expo/`.
+> Kaldırılan bağımlılıklar: `@radix-ui/react-slot`, `class-variance-authority`, web'deki doğrudan `clsx`/`tailwind-merge`/`@supabase/supabase-js`
+> (core sağlıyor), çift Tailwind hattı (`postcss.config.js`, `@tailwindcss/postcss`, `autoprefixer`, `postcss`) — CSS çıktısı yalnızca iki eski
+> önek (`-moz-column-gap`, `-o-object-fit`) dışında aynı, tüm `-webkit-` önekleri korundu.
+> `formatTime` / `formatEventTime` birleştirilmedi: çıktıları farklı (`numeric` vs `2-digit` saat) ve farklı ekranlarda kasıtlı kullanılıyor.
+> `scripts/` dosyalarının tek tek sınıflandırması: [scripts/README.md](../../scripts/README.md). Migration'lar, yedekler ve rollback dosyaları silinmedi.
+
 Bu doküman, projede kullanılmayan dosyaları, yetim bileşenleri, mükerrer yardımcı fonksiyonları ve operasyonel betiklerin durumunu sınıflandırır.
 
 > [!CAUTION]

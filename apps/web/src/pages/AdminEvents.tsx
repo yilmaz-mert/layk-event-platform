@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Archive, ArchiveRestore, ImageIcon, MoreHorizontal, Pencil, Plus, Search, Settings2, SlidersHorizontal, X } from 'lucide-react';
 import { supabase, cn } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import CategoryManagerModal, { type EventCategory } from '@/components/CategoryManagerModal';
 import EventFormModal, { type AdminEventRecord } from '@/components/admin/EventFormModal';
 import ConfirmDialog from '@/components/admin/ConfirmDialog';

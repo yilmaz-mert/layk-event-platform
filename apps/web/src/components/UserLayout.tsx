@@ -51,7 +51,7 @@ export default function UserLayout() {
             </NavLink>
           )}
 
-          {profile?.id && <NotificationBell userId={profile.id} />}
+          {profile?.id && <NotificationBell key={profile.id} userId={profile.id} />}
 
           <button
             onClick={toggleTheme}

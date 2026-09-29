@@ -1,5 +1,10 @@
 # Modülerleştirme ve Refaktör Planı (refactoring-plan.md)
 
+> **Durum — 2026-09-29:** 2.1 uygulandı (`components/admin/UserProfileDialog.tsx`; sayfa 1619 → ~650 satır; ortak `userAccount.tsx`,
+> `lib/userDisplay.ts`; çift seçici `SearchableCombo` olarak birleştirildi). 2.2 önceki turda uygulanmıştı (`EventFormModal.tsx`).
+> 2.3 uygulandı (`components/profile/UserSupportSection.tsx`; sorgu ve Realtime kanalı yalnızca destek sekmesi açıkken). 2.4 uygulandı
+> (admin rotaları lazy). Yorum önerileri: Switch için ayrı düzeltme gerekmedi (bkz. A11Y-001), `CLAUDE.md` DOC-001'e göre düzeltildi.
+
 Bu doküman, `codebase-design` ilkeleri doğrultusunda aşırı sorumluluk taşıyan dosyaların derin modüllere dönüştürülmesini, arayüz sınırlarını (seams) ve kod içi açıklama ihtiyaçlarını planlar.
 
 ---

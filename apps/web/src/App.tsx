@@ -1,4 +1,5 @@
-﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+﻿import { lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@layk/core';
 import { ToastProvider } from '@/components/Toast';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -10,11 +11,13 @@ import UserFeed from '@/pages/UserFeed';
 import MyBookings from '@/pages/MyBookings';
 import UserProfile from '@/pages/UserProfile';
 import EventDetails from '@/pages/EventDetails';
-import AdminDashboard from '@/pages/AdminDashboard';
-import AdminEvents from '@/pages/AdminEvents';
-import AdminEventDetails from '@/pages/AdminEventDetails';
-import AdminBroadcast from '@/pages/AdminBroadcast';
-import AdminTickets from '@/pages/AdminTickets';
+// Admin pages load on demand so regular users never download them. The Suspense
+// boundary lives in AdminLayout, so the admin header stays put while a chunk loads.
+const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'));
+const AdminEvents = lazy(() => import('@/pages/AdminEvents'));
+const AdminEventDetails = lazy(() => import('@/pages/AdminEventDetails'));
+const AdminBroadcast = lazy(() => import('@/pages/AdminBroadcast'));
+const AdminTickets = lazy(() => import('@/pages/AdminTickets'));
 
 export default function App() {
   return (

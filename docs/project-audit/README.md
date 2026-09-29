@@ -1,5 +1,10 @@
 # Layk Platform — Kapsamlı Proje İnceleme ve Bilgi Dizini
 
+> **Güncelleme — 2026-09-29 (teslim öncesi temizlik):** Mobil uygulama kaldırıldı, SEC-002 / BUG-004 / BUG-005 / ARCH-001 / DOC-001 çözüldü,
+> ARCH-002 kısmen çözüldü; SEC-001, BUG-001, BUG-003 güncel SQL'de yeniden doğrulandı ve sonraki öncelikli görev olarak açık.
+> Güncel durum ve kanıtlar: [findings.md → Durum Güncellemesi](findings.md). Proje rehberi: kök [README.md](../../README.md).
+> Aşağıdaki inceleme metni ilk incelemenin (commit öncesi) kaydıdır; bu turda değiştirilmedi.
+
 Bu dizin, **Layk Event Platform** projesinin müşteri teslimine hazırlanması amacıyla gerçekleştirilen statik ve mimari incelemenin kalıcı bilgi merkezidir.
 
 > **Önemli Not:** Bu inceleme aşamasında hiçbir uygulama kodu değiştirilmemiş, dosya silinmemiş, veritabanına yazılmamış ve migration uygulanmamıştır. Amaç; sistemin mevcut davranışını, mimarisini, veri akışlarını ve risklerini kanıtlarıyla ortaya koyarak sonraki düzeltme adımlarını güvenli kılmaktır.

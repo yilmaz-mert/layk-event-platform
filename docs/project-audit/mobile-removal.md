@@ -1,5 +1,16 @@
 # Mobil Uygulamanın Kaldırılması Etki ve Bağlantı Kılavuzu (mobile-removal.md)
 
+> **Durum — Tamamlandı (2026-09-29).** Yapılanlar: `apps/mobile` (izlenen 39 dosya + yerel `android/`, `.env.local`, `node_modules`),
+> kök `app.json`, `.expo/`, kök `tsconfig.json` (yalnızca `expo/tsconfig.base` genişletiyordu), `.npmrc` (`legacy-peer-deps` artık gereksiz;
+> kurulum peer çakışmasız), kök `expo` devDependency'si ve `react-native` override'ı kaldırıldı; `react` sabitlemesi sürüm kaymasını önlemek için korundu.
+> `dev` betiği yalnızca web'i başlatır. Lockfile 481 → 128 kB; web paketlerinde sürüm değişikliği yok. `@layk/core` korundu; Hermes kaynaklı
+> `resolveEnv`/`process.env` yolu ve `createSupabaseClient` (yalnızca mobil kullanıyordu) kaldırıldı, env okuması `import.meta.env`'e geçti (bkz. SEC-002).
+> Vite `define` bloğu kaldırıldı.
+>
+> **Bilinçli olarak dokunulmayanlar (yalnızca listelendi):** Edge Function `send-push` (Expo Push API), `users.push_token` kolonu (0021),
+> `trg_send_push_on_notification` trigger'ı (0022–0024) ve `extensions.http_post` içindeki Expo URL fallback'i. Web'de push yok; bu trigger her
+> bildirimde boşuna webhook çağırıyor olabilir — kaldırmak/pasifleştirmek yeni bir migration ve uzak ortam kararı gerektirir. Uzak kaynaklar silinmedi.
+
 `apps/mobile` uygulaması ileride projeden tamamen çıkarılacaktır. Bu doküman, mobil uygulamanın kaldırılmasının kök dizin, build ardışık düzeni (pipeline), ortak paketler (`@layk/core`), veritabanı trigger'ları ve Edge Functions üzerindeki tüm bağlantılarını haritalar.
 
 > [!IMPORTANT]

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import { supabase } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 
 export interface EventCategory {
   id: string;

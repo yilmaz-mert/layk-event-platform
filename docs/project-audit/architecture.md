@@ -1,5 +1,9 @@
 # Mimari ve Bağımlılık Raporu (architecture.md)
 
+> **Güncelleme — 2026-09-29:** Repo artık yalnızca `apps/web` + `packages/core` içerir (mobil kaldırıldı). Env okuması statik
+> `import.meta.env.VITE_*` ile yapılır; `vite.config.ts` `define` bloğu kaldırıldı ve build eksik değişkende durur. Sabit yedek proje yok.
+> Admin sayfaları lazy chunk'lardır. Aşağıdaki "Cross-Platform Env Trick" bölümü tarihsel kayıttır.
+
 Bu doküman, Layk platformunun monorepo orkestrasyonunu, paket sınırlarını, build/deploy mekanizmalarını ve çalışma zamanı yapılandırmasını açıklar.
 
 ---

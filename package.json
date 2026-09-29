@@ -9,16 +9,14 @@
   ],
   "scripts": {
     "build": "turbo build --filter=web",
-    "dev": "turbo dev",
+    "dev": "turbo dev --filter=web",
     "lint": "turbo lint",
     "build:web": "turbo build --filter=web"
   },
   "devDependencies": {
-    "expo": "~54.0.0",
     "turbo": "^2.5.4"
   },
   "overrides": {
-    "react": "19.2.7",
-    "react-native": "0.81.5"
+    "react": "19.2.7"
   }
 }

@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Bell, Trash2, X } from 'lucide-react';
 import { supabase } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import { cn } from '@layk/core';
 import { activeTicketId } from '@/lib/activeTicket';
 
@@ -27,6 +27,15 @@ function timeAgo(iso: string): string {
   return `${d} gün önce`;
 }
 
+function queryNotifications(userId: string) {
+  return supabase
+    .from('notifications')
+    .select('id, title, message, type, is_read, link_url, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+}
+
 export default function NotificationBell({ userId }: { userId: string }) {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -35,18 +44,19 @@ export default function NotificationBell({ userId }: { userId: string }) {
   const [clearingAll, setClearingAll] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Re-read after Realtime UPDATEs and bulk actions (event handlers / callbacks).
   const fetchNotifications = useCallback(async () => {
-    const { data } = await supabase
-      .from('notifications')
-      .select('id, title, message, type, is_read, link_url, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(20);
+    const { data } = await queryNotifications(userId);
     if (data) setNotifications(data as Notification[]);
   }, [userId]);
 
+  // Initial load + Realtime subscription for this user. The channel is removed on unmount;
+  // UserLayout keys the bell by user id, so signing out / switching users tears it down.
   useEffect(() => {
-    fetchNotifications();
+    let ignore = false;
+    queryNotifications(userId).then(({ data }) => {
+      if (!ignore && data) setNotifications(data as Notification[]);
+    });
 
     const channel = supabase
       .channel(`notif-${userId}`)
@@ -88,7 +98,10 @@ export default function NotificationBell({ userId }: { userId: string }) {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      ignore = true;
+      supabase.removeChannel(channel);
+    };
   }, [fetchNotifications, userId]);
 
   useEffect(() => {

@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom';
 import { Bookmark, CalendarDays, ChevronRight, Users } from 'lucide-react';
 import { supabase } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import { cn } from '@layk/core';
 import { formatEventDay, formatEventTime, formatRelativeDay } from '@/lib/eventDisplay';
 
@@ -122,14 +122,11 @@ export default function MyBookings() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Mount-only load. The query has no user filter on purpose: RLS
+  // ("reservations: users view own") limits rows to the signed-in user.
   useEffect(() => {
-    fetchReservations();
-  }, []);
-
-  async function fetchReservations() {
-    setLoading(true);
-
-    const { data, error } = await supabase
+    let ignore = false; // the page can unmount before the request resolves
+    supabase
       .from('reservations')
       .select(`
         id,
@@ -149,16 +146,15 @@ export default function MyBookings() {
         )
       `)
       .eq('status', 'confirmed')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      toast.error('Rezervasyonlarınız yüklenemedi.');
-    } else {
-      setReservations((data ?? []) as unknown as Reservation[]);
-    }
-
-    setLoading(false);
-  }
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (ignore) return;
+        if (error) toast.error('Rezervasyonlarınız yüklenemedi.');
+        else setReservations((data ?? []) as unknown as Reservation[]);
+        setLoading(false);
+      });
+    return () => { ignore = true; };
+  }, [toast]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 

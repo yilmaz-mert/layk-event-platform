@@ -8,18 +8,51 @@ Bu dokümanda yer alan tüm bulgular, kod yolları, veritabanı migration'ları 
 
 | ID | Başlık | Önem | Durum | Kategori |
 | :--- | :--- | :--- | :--- | :--- |
-| **SEC-001** | `book_event` RPC'sinde `approval_status` (Hesap Onayı) Kontrolünün Bulunmaması | **Kritik** | Doğrulandı | Güvenlik / Yetki |
-| **BUG-001** | İptal, Arşivlenmiş, Tamamlanmış ve Taslak Etkinliklerin `book_event` ile Rezerve Edilebilmesi | **Yüksek** | Doğrulandı | İş Mantığı |
-| **BUG-002** | İptal Edilen Etkinliklerin Kullanıcı Sayfasından Gizlenmesi ve Bildirim Linkinin 404 Vermesi | **Yüksek** | Doğrulandı | RLS / Veri Akışı |
-| **BUG-003** | Yeni Etkinlik Bildiriminin Taslak Oluşturulurken Gitmesi ve Yayında Tetiklenmemesi | **Orta** | Doğrulandı | Trigger Mantığı |
-| **SEC-002** | `@layk/core` İçinde Sabit Kodlanmış Fallback Supabase Anahtarları | **Orta** | Doğrulandı | Yapılandırma Güvenliği |
-| **BUG-004** | `TicketChat` Bileşeninde Kullanıcının Kendi Gönderdiği Mesaja Bildirim Sesi Çalınması | **Düşük** | Doğrulandı | UX / State |
-| **BUG-005** | React 19 ve `eslint-plugin-react-hooks` Kuralları Nedeniyle `npm run lint` Başarısızlığı | **Orta** | Doğrulandı | Kod Kalitesi / CI |
-| **A11Y-001** | `Switch.tsx` İçinde Butonun `<label>` ile Sarmalanması ve Çift Tetiklenme Riski | **Düşük** | Doğrulandı | A11y / DOM |
-| **ARCH-001** | Kullanılmayan ve Rotalanmamış Yetim Sayfalar (`Support.tsx`, `AdminEventManagement.tsx`) | **Orta** | Doğrulandı | Mimari Temizlik |
-| **ARCH-002** | Kod Bölme (Code Splitting) Bulunmaması Nedeniyle 632 kB Dev Tekil Bundle | **Orta** | Doğrulandı | Performans |
-| **DOC-001** | `CLAUDE.md` Dokümantasyonu ile `ProtectedRoute.tsx` Arasındaki Yetki Çelişkisi | **Düşük** | Doğrulandı | Dokümantasyon |
-| **INT-001** | SMS Gönderiminin Yalnızca Bir Taslak (Stub) Olması ve Veritabanı GUC Parametre Bağımlılığı | **Düşük** | Doğrulandı | Entegrasyon |
+| **SEC-001** | `book_event` RPC'sinde `approval_status` (Hesap Onayı) Kontrolünün Bulunmaması | **Kritik** | Açık — güncel SQL'de yeniden doğrulandı (+ ek UPDATE yolu) | Güvenlik / Yetki |
+| **BUG-001** | İptal, Arşivlenmiş, Tamamlanmış ve Taslak Etkinliklerin `book_event` ile Rezerve Edilebilmesi | **Yüksek** | Açık — güncel SQL'de yeniden doğrulandı (+ ek UPDATE yolu) | İş Mantığı |
+| **BUG-002** | İptal Edilen Etkinliklerin Kullanıcı Sayfasından Gizlenmesi ve Bildirim Linkinin 404 Vermesi | **Yüksek** | Açık — ürün kararı gerekli | RLS / Veri Akışı |
+| **BUG-003** | Yeni Etkinlik Bildiriminin Taslak Oluşturulurken Gitmesi ve Yayında Tetiklenmemesi | **Orta** | Açık — güncel SQL'de yeniden doğrulandı | Trigger Mantığı |
+| **SEC-002** | `@layk/core` İçinde Sabit Kodlanmış Fallback Supabase Anahtarları | **Orta** | **Çözüldü** (2026-09-29) | Yapılandırma Güvenliği |
+| **BUG-004** | `TicketChat` Bileşeninde Kullanıcının Kendi Gönderdiği Mesaja Bildirim Sesi Çalınması | **Düşük** | **Çözüldü** (2026-09-29) | UX / State |
+| **BUG-005** | React 19 ve `eslint-plugin-react-hooks` Kuralları Nedeniyle `npm run lint` Başarısızlığı | **Orta** | **Çözüldü** (lint 0 problem) | Kod Kalitesi / CI |
+| **A11Y-001** | `Switch.tsx` İçinde Butonun `<label>` ile Sarmalanması ve Çift Tetiklenme Riski | **Düşük** | Yeniden üretilemedi (Chromium + WebKit); ekran okuyucu doğrulanmadı | A11y / DOM |
+| **ARCH-001** | Kullanılmayan ve Rotalanmamış Yetim Sayfalar (`Support.tsx`, `AdminEventManagement.tsx`) | **Orta** | **Çözüldü** (dosyalar silindi) | Mimari Temizlik |
+| **ARCH-002** | Kod Bölme (Code Splitting) Bulunmaması Nedeniyle 632 kB Dev Tekil Bundle | **Orta** | Kısmen çözüldü (admin lazy; ana chunk 556 kB) | Performans |
+| **DOC-001** | `CLAUDE.md` Dokümantasyonu ile `ProtectedRoute.tsx` Arasındaki Yetki Çelişkisi | **Düşük** | **Çözüldü** (doküman düzeltildi) | Dokümantasyon |
+| **INT-001** | SMS Gönderiminin Yalnızca Bir Taslak (Stub) Olması ve Veritabanı GUC Parametre Bağımlılığı | **Düşük** | Açık — değişmedi (bilgi) | Entegrasyon |
+
+---
+
+## Durum Güncellemesi — 2026-09-29 (teslim öncesi temizlik turu)
+
+Aşağıdaki notlar orijinal bulguları silmeden, güncel kod üzerindeki doğrulamayla eklenmiştir. Doğrulamalar yerel build,
+lint ve **mock Supabase** ile tarayıcı kontrolleridir; **gerçek backend'e karşı hiçbir şey doğrulanmadı**, uzak veritabanına yazılmadı.
+
+| ID | Yeni durum | Kanıt |
+| :--- | :--- | :--- |
+| SEC-002 | **Çözüldü** | Kapsam, rapordan geniş çıktı: `process.env[key]` dinamik okuması production build'de hiç değiştirilmiyordu; env ne olursa olsun paket sabit demo projeye bağlanıyordu (farklı URL ile yapılan probe build'de URL pakette yoktu). Artık `packages/core/src/lib/supabase.ts` statik `import.meta.env.VITE_*` okur, yedek proje yoktur; `vite build` değişken eksikse adını belirten hatayla durur (değer loglanmaz). Probe build: verilen URL/anahtar pakette var, eski proje referansı 0. |
+| BUG-004 | **Çözüldü** | `TicketChat` Realtime handler'ı yan etkiyi state updater dışına aldı; kendi mesajında ses/"Yeni mesaj" yok (`seenIdsRef` ile tekilleştirme). |
+| BUG-005 | **Çözüldü** | `npm run lint`: 0 problem (başlangıç: 16 hata + 1 uyarı). Kurallar susturulmadan düzeltildi: effect içi ilk yükleme `ignore` bayrağıyla `.then`, tekrar yüklemeler olay işleyicilerinde, prop→state eşitlemeleri render sırasında; provider/hook dosyaları ayrıldı (`hooks/useToast`, `hooks/useTheme`). |
+| ARCH-001 | **Çözüldü** | `Support.tsx`, `AdminEventManagement.tsx` silindi (rota/import/dinamik import yok). |
+| ARCH-002 | **Kısmen çözüldü** | Admin sayfaları `React.lazy` (5–37 kB chunk'lar). Ana chunk 670 → 556 kB (gzip 159 kB); kalan ağırlık React DOM + supabase-js + router, 500 kB uyarısı sürüyor. Eski chunk hatası için en fazla dakikada bir otomatik yenileme + `RouteErrorBoundary` (kalıcı ağ hatasında tam 1 yenileme, sonra hata ekranı — preview build'de doğrulandı). |
+| DOC-001 | **Çözüldü (doküman)** | `CLAUDE.md` artık doğruyu söylüyor: `ProtectedRoute` yalnızca oturum + rol kontrol eder; onay girişte (`Login.tsx` onaysız kullanıcıyı çıkarır) ve `useAuth`'ta (rejected → çıkış) uygulanır. Oturum açıkken `pending`'e alınan kullanıcı kullanıcı rotalarına erişmeye devam eder — SEC-001 ile birlikte ele alınmalı. |
+| A11Y-001 | **Yeniden üretilemedi / kısmen doğrulandı** | HTML `label` öğesinin `button` ile ilişkilendirilmesine izin verir; bu tek başına kanıt sayılmadı. Chromium ve WebKit'te: switch `role=switch` ve etiket metniyle erişilebilir isim alıyor; etikete tıklama, düğmeye tıklama, Space ve Enter her biri **tam bir kez** değiştiriyor. Ekran okuyucu (VoiceOver/NVDA) ile çift duyuru kontrol edilmedi. |
+| SEC-001 | **Açık — sonraki öncelikli görev** | `0015_admin_overrides_notif_delete.sql` `book_event`: yalnızca `auth.uid()` ve `capacity, booked_count, max_tickets_per_user` okunuyor; `approval_status` kontrolü yok. **Ek yol:** kullanıcıların `reservations` üzerinde UPDATE politikası var (`0003`); `cancelled → confirmed` veya bilet artırma yalnızca `sync_booked_count` (kapasite + kişi başı sınır) ve `protect_reservation_integrity` (event/user değişimi) ile korunuyor — onay kontrolü yok. INSERT politikası yok, yani yeni rezervasyon yalnızca `book_event` ile. |
+| BUG-001 | **Açık — sonraki öncelikli görev** | Aynı fonksiyonda etkinlik `status`, `is_published`, `is_archived`, `event_date` kontrol edilmiyor; aynı ek UPDATE yolu (iptal edilmiş/geçmiş etkinlikte rezervasyonu yeniden onaylama) geçerli. |
+| BUG-003 | **Açık — sonraki öncelikli görev** | `0012_notification_system.sql`: `trg_notify_on_new_event` `AFTER INSERT` ve `is_published`'e bakmıyor; sonraki migration'larda yeniden tanımlanmamış. |
+| BUG-002, INT-001 | Değişmedi | Ürün kararı / entegrasyon kapsamı; bu turda dokunulmadı. |
+
+**Ek notlar**
+- Git geçmişinde izlenmiş tek env dosyası `apps/mobile/.env`: içinde yalnızca proje URL'i ve **publishable** (`sb_publishable_`) anahtar var. Geçmişte `sb_secret_` veya service-role JWT bulunmadı → gizli yönetici anahtarı sızıntısı değil (publishable anahtar zaten tarayıcı paketinde yer alır).
+- `scripts/` önceden `.gitignore` ile tümüyle gizleniyor ve hiç izlenmiyordu; artık yalnızca `scripts/backups/` yok sayılıyor. Dosya sınıflandırması: [../../scripts/README.md](../../scripts/README.md). Betiklerdeki sabit proje URL/anahtar yedekleri ve kişisel yerel yol kaldırıldı.
+
+### Sonraki görev için en küçük düzeltme kapsamı (henüz uygulanmadı)
+Yeni bir migration (ör. `0031_booking_guards.sql`), uygulanmış dosyalar değiştirilmeden:
+1. `book_event` yeniden tanımı: admin değilse `users.approval_status = 'approved'` şartı (SEC-001) ve etkinlik için
+   `status = 'active' AND is_published AND NOT is_archived AND event_date > now()` şartı (BUG-001); mevcut kilit (`FOR UPDATE`) sırası korunur.
+2. `sync_booked_count` içindeki `cancelled → confirmed` ve bilet artırma dallarına (admin değilse) aynı iki şart — ya da kullanıcı UPDATE politikasını yalnızca `status → cancelled` ve bilet azaltma ile sınırlamak. Hangisinin seçileceği ürün kararıdır (kullanıcının kendi rezervasyonunu yeniden etkinleştirmesi isteniyor mu?).
+3. `trg_notify_on_new_event`: `AFTER INSERT OR UPDATE OF is_published` + koşul `NEW.is_published AND NEW.status = 'active' AND NOT NEW.is_archived AND (TG_OP = 'INSERT' OR NOT OLD.is_published)` (BUG-003).
+Doğrulama: yerel/geçici bir Postgres'te pending kullanıcı, iptal/geçmiş/taslak/arşiv etkinlik ve yayına alma senaryoları; ardından web akışlarının hata mesajlarını göstermesi.
 
 ---
 

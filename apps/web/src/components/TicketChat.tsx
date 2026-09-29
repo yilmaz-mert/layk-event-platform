@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, CheckCheck, Loader2, Send } from 'lucide-react';
 import { supabase, formatTime } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import { cn } from '@layk/core';
 import { setActiveTicketId } from '@/lib/activeTicket';
 import ConfirmDialog from '@/components/admin/ConfirmDialog';
@@ -34,6 +34,15 @@ interface Props {
   safeAreaBottom?: boolean;
 }
 
+function fetchTicketMessages(ticketId: string) {
+  return supabase
+    .from('ticket_messages')
+    .select('*')
+    .eq('ticket_id', ticketId)
+    .order('created_at', { ascending: true })
+    .then(({ data, error }) => ({ data: data as TicketMessage[] | null, error }));
+}
+
 // Within this distance of the bottom the reader counts as "following" the conversation.
 const FOLLOW_THRESHOLD_PX = 80;
 
@@ -53,10 +62,16 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
   const scrollRef = useRef<HTMLDivElement>(null);
   const followingRef = useRef(true);
   const renderedCountRef = useRef(0);
+  // Message ids already shown — lets the Realtime handler dedupe without side effects in a state updater.
+  const seenIdsRef = useRef(new Set<string>());
 
-  useEffect(() => {
+  // Follow status changes pushed down by the parent (its list also listens to Realtime),
+  // while still allowing the local "resolved" update below. Adjusted during render, not in an effect.
+  const [prevTicketStatus, setPrevTicketStatus] = useState(ticket.status);
+  if (ticket.status !== prevTicketStatus) {
+    setPrevTicketStatus(ticket.status);
     setTicketStatus(ticket.status);
-  }, [ticket.status]);
+  }
 
   // Signal to NotificationBell which ticket is currently open
   useEffect(() => {
@@ -64,24 +79,28 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
     return () => { setActiveTicketId(null); };
   }, [ticket.id]);
 
-  const loadMessages = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('ticket_messages')
-      .select('*')
-      .eq('ticket_id', ticket.id)
-      .order('created_at', { ascending: true });
+  const applyLoaded = useCallback((data: TicketMessage[] | null, error: { message: string } | null) => {
+    const list = data ?? [];
+    list.forEach((m) => seenIdsRef.current.add(m.id));
     setLoadError(error ? error.message : null);
-    setMessages((data ?? []) as TicketMessage[]);
+    setMessages(list);
     setLoading(false);
-  }, [ticket.id]);
+  }, []);
 
+  // Initial load. Both parents key this component by ticket id, so a different ticket
+  // means a fresh mount (fresh state), not a re-run of this effect.
   useEffect(() => {
+    let ignore = false;
+    fetchTicketMessages(ticket.id).then(({ data, error }) => {
+      if (!ignore) applyLoaded(data, error);
+    });
+    return () => { ignore = true; };
+  }, [ticket.id, applyLoaded]);
+
+  function retryLoad() {
     setLoading(true);
-    setMessages([]);
-    renderedCountRef.current = 0;
-    followingRef.current = true;
-    loadMessages();
-  }, [loadMessages]);
+    fetchTicketMessages(ticket.id).then(({ data, error }) => applyLoaded(data, error));
+  }
 
   // Realtime: new messages for this ticket
   useEffect(() => {
@@ -97,13 +116,14 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
         },
         (payload) => {
           const msg = payload.new as TicketMessage;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === msg.id)) return prev;
-            new Audio('/notification.mp3').play().catch(() => {});
-            return [...prev, msg];
-          });
+          if (seenIdsRef.current.has(msg.id)) return;
+          seenIdsRef.current.add(msg.id);
+          setMessages((prev) => [...prev, msg]);
+          // Our own messages come back through Realtime too: no sound, no "new message" pill for those.
+          if (msg.sender_id === currentUserId) return;
+          new Audio('/notification.mp3').play().catch(() => {});
           // Reading older messages: don't yank the view, count it instead.
-          if (!followingRef.current && msg.sender_id !== currentUserId) setUnseen((n) => n + 1);
+          if (!followingRef.current) setUnseen((n) => n + 1);
         },
       )
       .subscribe();
@@ -280,7 +300,7 @@ export default function TicketChat({ ticket, currentUserId, isAdmin, onResolved,
               <p className="mt-1 break-words text-xs text-muted-foreground">{loadError}</p>
               <button
                 type="button"
-                onClick={() => { setLoading(true); loadMessages(); }}
+                onClick={retryLoad}
                 className="mt-3 h-11 rounded-lg border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
                 Tekrar dene

@@ -1,5 +1,13 @@
 # Doğrulama, Test ve Kontrol Matrisi (verification-plan.md)
 
+> **Son çalıştırma — 2026-09-29:** web `tsc -b` ✓, core `tsc --noEmit` ✓, `npm run build` ✓ (ana chunk 556.57 kB / gzip 158.99 kB; >500 kB uyarısı),
+> `npm run lint` ✓ **0 problem**, `refresh-demo-data.test.js` 7/7 ✓, `upload-event-images.test.js` 4/4 ✓, `npm ci --dry-run` ✓.
+> Env probe build: verilen URL/anahtar pakette, eski demo proje referansı 0; env eksikken build değer loglamadan durur.
+> Tarayıcı (Playwright, **mock Supabase + mock Realtime**, 390/1280 px): profil destek sekmesi ve `?ticketId` doğrudan bağlantısı,
+> sekmeden çıkınca/çıkış yapınca kanal temizliği, admin kullanıcı penceresi, ortak seçiciler (klavye, Escape), admin lazy yükleme,
+> eski chunk için tek yenileme + hata ekranı (preview build) — hepsi geçti. Switch: Chromium + WebKit etkileşim testi geçti.
+> **Gerçek backend, gerçek cihaz ve ekran okuyucu ile doğrulama yapılmadı.** Aşağıdaki manuel matris (3.1–3.4) hâlâ geçerlidir.
+
 Bu doküman, inceleme sırasında gerçekleştirilen güvenli yerel kontrolleri, mevcut test durumunu, çalıştırılamayan senaryoları ve teslim öncesi uygulanacak doğrulama matrisini belgeler.
 
 ---

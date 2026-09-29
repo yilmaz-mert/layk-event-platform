@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Camera, LifeBuoy, Loader2, MessageCircle, Plus, Trash2, User, X } from 'lucide-react';
-import { supabase, formatShortDate } from '@layk/core';
+import { Camera, LifeBuoy, Loader2, Trash2, User } from 'lucide-react';
+import { supabase } from '@layk/core';
 import { useAuth } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import { cn } from '@layk/core';
 import Switch from '@/components/Switch';
 import AvatarBubble from '@/components/AvatarBubble';
 import { processAvatarImage } from '@/lib/imageProcessing';
-import TicketChat, { type SupportTicket } from '@/components/TicketChat';
+import UserSupportSection from '@/components/profile/UserSupportSection';
 
 const inputClass =
   'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground ' +
@@ -32,16 +32,6 @@ export default function UserProfile() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  // ── Support ticket state ───────────────────────────────────────────────────
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [ticketsLoading, setTicketsLoading] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [creating, setCreating] = useState(false);
-
-  const selectedTicket = tickets.find((t) => t.id === selectedId) ?? null;
 
   // ── Profile data ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -159,81 +149,6 @@ export default function UserProfile() {
     await fetchProfile(profile.id);
     toast.success('Profil güncellendi.');
     setSaving(false);
-  }
-
-  // ── Support ticket data ────────────────────────────────────────────────────
-  const loadTickets = useCallback(async () => {
-    setTicketsLoading(true);
-    const { data } = await supabase
-      .from('support_tickets')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setTickets((data ?? []) as SupportTicket[]);
-    setTicketsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (activeTab !== 'support') return;
-    loadTickets();
-  }, [activeTab, loadTickets]);
-
-  // Deep-link: reactively open the ticket identified by ?ticketId= in the URL
-  useEffect(() => {
-    const ticketId = searchParams.get('ticketId');
-    if (activeTab !== 'support' || !ticketId || tickets.length === 0) return;
-    if (tickets.some((t) => t.id === ticketId)) {
-      setSelectedId(ticketId);
-      setSearchParams({ tab: 'support' }, { replace: true });
-    }
-  }, [searchParams, activeTab, tickets, setSearchParams]);
-
-  // Realtime: status updates (e.g., admin resolves a ticket while user is viewing)
-  useEffect(() => {
-    const channel = supabase
-      .channel('profile-support-tickets')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'support_tickets' },
-        (payload) => {
-          const updated = payload.new as SupportTicket;
-          setTickets((prev) =>
-            prev.map((t) => (t.id === updated.id ? { ...t, status: updated.status } : t)),
-          );
-        },
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  async function handleCreateTicket(e: FormEvent) {
-    e.preventDefault();
-    if (!subject.trim() || !profile) return;
-    setCreating(true);
-
-    const { data, error } = await supabase
-      .from('support_tickets')
-      .insert({ user_id: profile.id, subject: subject.trim() })
-      .select('*')
-      .single();
-
-    if (error) {
-      toast.error(error.message);
-    } else {
-      const ticket = data as SupportTicket;
-      setTickets((prev) => [ticket, ...prev]);
-      setSubject('');
-      setShowForm(false);
-      setSelectedId(ticket.id);
-    }
-    setCreating(false);
-  }
-
-  function handleResolved() {
-    if (!selectedId) return;
-    setTickets((prev) =>
-      prev.map((t) => (t.id === selectedId ? { ...t, status: 'resolved' as const } : t)),
-    );
   }
 
   // ── Tab navigation ─────────────────────────────────────────────────────────
@@ -430,130 +345,7 @@ export default function UserProfile() {
       )}
 
       {/* ── Support Tickets tab ── */}
-      {activeTab === 'support' && (
-        <div className="flex h-[60vh] overflow-hidden rounded-xl border">
-          {/* Left: ticket list */}
-          <aside
-            className={cn(
-              'flex flex-col border-r',
-              selectedTicket
-                ? 'hidden md:flex md:w-64 lg:w-72'
-                : 'flex w-full md:w-64 lg:w-72',
-            )}
-          >
-            {/* List header */}
-            <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
-              <span className="text-sm font-semibold text-foreground">Taleplerim</span>
-              <button
-                type="button"
-                onClick={() => { setShowForm((v) => !v); setSubject(''); }}
-                className={cn(
-                  'flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition',
-                  showForm
-                    ? 'bg-muted text-foreground'
-                    : 'bg-primary text-primary-foreground hover:opacity-90',
-                )}
-              >
-                {showForm ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                {showForm ? 'Vazgeç' : 'Yeni'}
-              </button>
-            </div>
-
-            {/* New ticket form */}
-            {showForm && (
-              <div className="shrink-0 border-b bg-muted/30 p-3">
-                <form onSubmit={handleCreateTicket} className="space-y-2">
-                  <input
-                    autoFocus
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    placeholder="Sorununuzu açıklayın…"
-                    required
-                    maxLength={200}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <button
-                    type="submit"
-                    disabled={creating || !subject.trim()}
-                    className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {creating ? 'Açılıyor…' : 'Talep Aç'}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* List */}
-            <div className="flex-1 overflow-y-auto">
-              {ticketsLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : tickets.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center">
-                  <MessageCircle className="h-7 w-7 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">Henüz talep yok</p>
-                  <p className="text-xs text-muted-foreground/60">
-                    Yeni bir talep açmak için &quot;Yeni&quot;ye tıklayın.
-                  </p>
-                </div>
-              ) : (
-                tickets.map((ticket) => (
-                  <button
-                    key={ticket.id}
-                    type="button"
-                    onClick={() => setSelectedId(ticket.id)}
-                    className={cn(
-                      'w-full border-b px-4 py-3 text-left transition last:border-0 hover:bg-muted/50',
-                      selectedId === ticket.id && 'bg-primary/5',
-                    )}
-                  >
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {ticket.subject}
-                    </p>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {formatShortDate(ticket.created_at)}
-                      </span>
-                      <span
-                        className={cn(
-                          'rounded-full px-1.5 py-px text-[10px] font-semibold',
-                          ticket.status === 'open'
-                            ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                            : 'bg-muted text-muted-foreground',
-                        )}
-                      >
-                        {ticket.status === 'open' ? 'Açık' : 'Çözüldü'}
-                      </span>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </aside>
-
-          {/* Right: chat or empty state */}
-          {selectedTicket && profile?.id ? (
-            <div className="flex flex-1">
-              <TicketChat
-                key={selectedTicket.id}
-                ticket={selectedTicket}
-                currentUserId={profile.id}
-                isAdmin={false}
-                onResolved={handleResolved}
-                onBack={() => setSelectedId(null)}
-              />
-            </div>
-          ) : (
-            <div className="hidden flex-1 flex-col items-center justify-center gap-2 text-center md:flex">
-              <LifeBuoy className="h-8 w-8 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">
-                Görüntülemek için bir talep seçin
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+      {activeTab === 'support' && profile?.id && <UserSupportSection userId={profile.id} />}
     </main>
   );
 }

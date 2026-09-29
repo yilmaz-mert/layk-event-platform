@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, MapPin, MessageSquareQuote, Minus, Plus, Search, Users, X } from 'lucide-react';
 import { supabase, formatPrice } from '@layk/core';
 import { useAuth } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import AvatarBubble from '@/components/AvatarBubble';
 import { cn } from '@layk/core';
 import {
@@ -239,8 +239,12 @@ export default function EventDetails() {
   const [booking, setBooking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
-  const [attendees, setAttendees] = useState<PublicAttendee[]>([]);
-  const [attendeesLoading, setAttendeesLoading] = useState(false);
+  // Attendees belong to one (event, viewer) pair; anything else counts as "not loaded yet",
+  // so a slow response for a previous event can't show under the current one.
+  const attendeesKey = id && profile?.id ? `${id}:${profile.id}` : null;
+  const [attendeeData, setAttendeeData] = useState<{ key: string; list: PublicAttendee[] } | null>(null);
+  const attendees = attendeeData && attendeeData.key === attendeesKey ? attendeeData.list : [];
+  const attendeesLoading = attendeesKey !== null && attendeeData?.key !== attendeesKey;
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [bannerError, setBannerError] = useState(false);
   const bookingRef = useRef<HTMLElement>(null);
@@ -261,25 +265,23 @@ export default function EventDetails() {
 
   // Private attendees are filtered out server-side by the RPC (see 0030).
   useEffect(() => {
-    if (!id || !profile?.id) {
-      setAttendees([]);
-      return;
-    }
+    if (!id || !attendeesKey) return;
     let isMounted = true;
-    setAttendeesLoading(true);
     supabase
       .rpc('get_public_event_attendees', { p_event_id: id })
       .then(({ data, error }) => {
         if (!isMounted) return;
-        if (!error) setAttendees((data ?? []) as PublicAttendee[]);
-        setAttendeesLoading(false);
+        setAttendeeData({ key: attendeesKey, list: error ? [] : ((data ?? []) as PublicAttendee[]) });
       });
     return () => { isMounted = false; };
-  }, [id, profile?.id]);
+  }, [id, attendeesKey]);
 
-  useEffect(() => {
+  // Start the seat picker from the reservation whenever a (re)loaded reservation arrives.
+  const [prevReservation, setPrevReservation] = useState(reservation);
+  if (reservation !== prevReservation) {
+    setPrevReservation(reservation);
     if (reservation) setSelectedSeats(reservation.tickets_requested);
-  }, [reservation]);
+  }
 
   async function fetchData(eventId: string, userId?: string) {
     setLoading(true);

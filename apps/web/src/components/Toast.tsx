@@ -1,7 +1,5 @@
-﻿import {
-  createContext,
+import {
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -10,25 +8,7 @@
 } from 'react';
 import { CheckCircle2, X, XCircle } from 'lucide-react';
 import { cn } from '@layk/core';
-
-type ToastVariant = 'success' | 'error';
-
-interface ToastItem {
-  id: number;
-  message: string;
-  variant: ToastVariant;
-}
-
-interface ToastContextValue {
-  toast: {
-    success: (message: string) => void;
-    error: (message: string) => void;
-  };
-}
-
-const ToastContext = createContext<ToastContextValue>({
-  toast: { success: () => {}, error: () => {} },
-});
+import { ToastContext, type ToastItem, type ToastVariant } from '@/hooks/useToast';
 
 let toastCounter = 0;
 
@@ -111,6 +91,3 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useToast() {
-  return useContext(ToastContext);
-}

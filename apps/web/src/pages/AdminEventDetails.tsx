@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ChevronRight, Download, Pencil, Users, X } from 'lucide-react';
 import { supabase, formatDateTime, formatPrice } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import { cn } from '@layk/core';
 import type { EventCategory } from '@/components/CategoryManagerModal';
 import EventFormModal, { adminInputClass, type AdminEventRecord } from '@/components/admin/EventFormModal';
@@ -349,6 +349,22 @@ function AttendeeHistoryDrawer({
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
+function queryEventDetail(eventId: string) {
+  return Promise.all([
+    supabase
+      .from('events')
+      .select(eventSelect)
+      .eq('id', eventId)
+      .single(),
+    supabase
+      .from('reservations')
+      .select('id, created_at, tickets_requested, users(id, full_name, email)', { count: 'exact' })
+      .eq('event_id', eventId)
+      .eq('status', 'confirmed')
+      .order('created_at', { ascending: true }),
+  ]);
+}
+
 export default function AdminEventDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -366,41 +382,36 @@ export default function AdminEventDetails() {
   const [editing, setEditing] = useState(false);
   const closingId = useId();
 
-  // silent: refresh in place (after a save) so the page — and the edit button
-  // focus returns to — stays mounted.
-  const fetchData = useCallback(async (eventId: string, silent = false) => {
-    if (!silent) setLoading(true);
+  const applyDetail = useCallback(
+    ([eventRes, attendeesRes]: Awaited<ReturnType<typeof queryEventDetail>>) => {
+      if (eventRes.error) {
+        toast.error('Etkinlik bulunamadı.');
+        navigate('/admin/events', { replace: true });
+        return;
+      }
+      setEvent(eventRes.data as unknown as EventDetail);
+      setClosingComment(eventRes.data.closing_comment ?? '');
+      setAttendees((attendeesRes.data ?? []) as unknown as Attendee[]);
+      setReservationCount(attendeesRes.error ? null : attendeesRes.count);
+      setLoading(false);
+    },
+    [toast, navigate],
+  );
 
-    const [eventRes, attendeesRes] = await Promise.all([
-      supabase
-        .from('events')
-        .select(eventSelect)
-        .eq('id', eventId)
-        .single(),
-      supabase
-        .from('reservations')
-        .select('id, created_at, tickets_requested, users(id, full_name, email)', { count: 'exact' })
-        .eq('event_id', eventId)
-        .eq('status', 'confirmed')
-        .order('created_at', { ascending: true }),
-    ]);
-
-    if (eventRes.error) {
-      toast.error('Etkinlik bulunamadı.');
-      navigate('/admin/events', { replace: true });
-      return;
-    }
-
-    setEvent(eventRes.data as unknown as EventDetail);
-    setClosingComment(eventRes.data.closing_comment ?? '');
-    setAttendees((attendeesRes.data ?? []) as unknown as Attendee[]);
-    setReservationCount(attendeesRes.error ? null : attendeesRes.count);
-    setLoading(false);
-  }, [toast, navigate]);
+  // The route reuses this page when :id changes, so show the skeleton again for a new id
+  // (adjusted during render; the effect below then loads that event).
+  const [shownId, setShownId] = useState(id);
+  if (id !== shownId) {
+    setShownId(id);
+    setLoading(true);
+  }
 
   useEffect(() => {
-    if (id) fetchData(id);
-  }, [id, fetchData]);
+    if (!id) return;
+    let ignore = false; // a newer id (or unmount) wins over a slower earlier response
+    queryEventDetail(id).then((result) => { if (!ignore) applyDetail(result); });
+    return () => { ignore = true; };
+  }, [id, applyDetail]);
 
   async function openEdit() {
     if (categories.length === 0) {
@@ -732,7 +743,8 @@ export default function AdminEventDetails() {
           editEvent={event}
           categories={categories}
           onClose={() => setEditing(false)}
-          onSaved={() => fetchData(event.id, true)}
+          // Silent refresh (no skeleton) so the page — and the edit button focus returns to — stays mounted.
+          onSaved={() => { queryEventDetail(event.id).then(applyDetail); }}
         />
       )}
     </>

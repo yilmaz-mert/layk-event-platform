@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ImageIcon, X } from 'lucide-react';
 import { supabase, cn } from '@layk/core';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/hooks/useToast';
 import Switch from '@/components/Switch';
 import type { EventCategory } from '@/components/CategoryManagerModal';
 import { categoryDotStyle } from '@/lib/eventDisplay';

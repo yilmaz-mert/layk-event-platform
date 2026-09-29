@@ -28,6 +28,13 @@ function useHeaderHeight() {
   return height;
 }
 
+function queryTickets() {
+  return supabase
+    .from('support_tickets')
+    .select('*, users!support_tickets_user_id_fkey(full_name, email)')
+    .order('created_at', { ascending: false });
+}
+
 function ticketWhen(iso: string) {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString() ? formatTime(iso) : formatShortDate(iso);
@@ -44,19 +51,20 @@ export default function AdminTickets() {
 
   const selectedTicket = tickets.find((t) => t.id === selectedId) ?? null;
 
-  const loadTickets = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('support_tickets')
-      .select('*, users!support_tickets_user_id_fkey(full_name, email)')
-      .order('created_at', { ascending: false });
+  const applyTickets = useCallback(({ data, error }: Awaited<ReturnType<typeof queryTickets>>) => {
     setLoadError(error ? error.message : null);
     if (!error) setTickets((data ?? []) as SupportTicket[]);
     setLoading(false);
   }, []);
 
+  // Also used by the Realtime INSERT handler to hydrate the users join for new tickets.
+  const loadTickets = useCallback(() => queryTickets().then(applyTickets), [applyTickets]);
+
   useEffect(() => {
-    loadTickets();
-  }, [loadTickets]);
+    let ignore = false; // the page can unmount before the request resolves
+    queryTickets().then((r) => { if (!ignore) applyTickets(r); });
+    return () => { ignore = true; };
+  }, [applyTickets]);
 
   // Realtime: new tickets + status changes
   useEffect(() => {

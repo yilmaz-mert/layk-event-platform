@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { CalendarDays, ChevronDown, Headphones, LogOut, Megaphone, Moon, Shield, Sun, Users, X } from 'lucide-react';
 import { supabase } from '@layk/core';
 import { useAuth } from '@layk/core';
 import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@layk/core';
+import RouteFallback from '@/components/RouteFallback';
+import RouteErrorBoundary from '@/components/RouteErrorBoundary';
 
 const NAV_ITEMS = [
   { to: '/admin', end: true, label: 'Kullanıcılar', icon: Users },
@@ -225,7 +227,11 @@ export default function AdminLayout() {
 
       {/* Page content is inert while the menu is open, so Tab stays in the menu. */}
       <div inert={menuOpen || undefined}>
-        <Outlet />
+        <RouteErrorBoundary key={pathname}>
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
+        </RouteErrorBoundary>
       </div>
     </div>
   );
